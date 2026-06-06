@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Camp Nou · Planner — Mockup detallado</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Hanken+Grotesk:wght@400;500;600;700&family=Spline+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --navy:#06183a; --blau:#004d98; --blau-bright:#1f6fd0; --garnet:#a50044; --garnet-soft:#c4356b;
+  --gold:#ffcb05; --gold-deep:#e0a100; --teal:#1d9e75; --violet:#7a4dd0;
+  --canvas:#eef1f6; --paper:#ffffff; --ink:#11192b; --ink-2:#5a657c; --ink-3:#8b93a7;
+  --line:#e4e8f0; --line-2:#eef1f6; --band:#f1f4f9; --ok:#1d9e75; --warn:#e0a100; --bad:#d8434f;
+  --shadow:0 1px 2px rgba(16,25,43,.04),0 8px 28px rgba(16,25,43,.07);
+  --cell:24px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:'Hanken Grotesk',sans-serif;background:var(--canvas);color:var(--ink);-webkit-font-smoothing:antialiased;display:flex;overflow:hidden;height:100vh}
+::-webkit-scrollbar{height:11px;width:11px}
+::-webkit-scrollbar-thumb{background:#c3cad8;border-radius:8px;border:3px solid transparent;background-clip:padding-box}
+::-webkit-scrollbar-thumb:hover{background:#aab4c8;background-clip:padding-box}
+
+/* SIDEBAR */
+.side{width:248px;flex:0 0 248px;background:linear-gradient(180deg,#071a40,#04122e);color:#cfd8ec;display:flex;flex-direction:column;position:relative;z-index:20}
+.side::after{content:"";position:absolute;inset:0;background:radial-gradient(420px 220px at 90% -10%,rgba(165,0,68,.35),transparent 60%),radial-gradient(380px 200px at -10% 105%,rgba(255,203,5,.10),transparent 60%);pointer-events:none}
+.brand{padding:20px 20px 14px;display:flex;align-items:center;gap:11px;position:relative;z-index:1}
+.crest{width:38px;height:38px;border-radius:11px;flex:0 0 38px;background:linear-gradient(135deg,var(--blau),var(--garnet));display:grid;place-items:center;box-shadow:0 6px 18px rgba(165,0,68,.4);position:relative;overflow:hidden}
+.crest::before{content:"";position:absolute;left:50%;top:0;width:2px;height:100%;background:rgba(255,255,255,.25);transform:translateX(-1px)}
+.crest span{font-family:'Archivo';font-weight:800;color:#fff;font-size:17px}
+.brand h1{font-family:'Archivo';font-weight:800;font-size:15px;color:#fff;line-height:1.05}
+.brand p{font-size:10.5px;color:#8fa0c4;font-weight:500;margin-top:2px}
+.slabel{padding:16px 20px 7px;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#6f82ab;font-weight:600;position:relative;z-index:1}
+.depts{padding:0 11px;position:relative;z-index:1;display:flex;flex-direction:column;gap:1px}
+.dept{display:flex;align-items:center;gap:10px;padding:8px 11px;border-radius:9px;cursor:pointer;color:#bcc8e2;font-weight:500;font-size:13px;transition:.16s;border:1px solid transparent}
+.dept:hover{background:rgba(255,255,255,.05);color:#fff}
+.dept.active{background:linear-gradient(90deg,rgba(165,0,68,.28),rgba(165,0,68,.06));color:#fff;border-color:rgba(255,203,5,.18)}
+.dot{width:8px;height:8px;border-radius:3px;flex:0 0 8px}
+.dept .ct{margin-left:auto;font-family:'Spline Sans Mono';font-size:10.5px;color:#7f90b6;background:rgba(255,255,255,.06);padding:1px 6px;border-radius:20px}
+.dept.active .ct{color:var(--gold);background:rgba(255,203,5,.12)}
+.nav{margin-top:auto;padding:12px 11px;position:relative;z-index:1;border-top:1px solid rgba(255,255,255,.07)}
+.nav a{display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:9px;color:#9fb0d2;font-size:13px;font-weight:500;text-decoration:none;cursor:pointer;transition:.15s}
+.nav a:hover{background:rgba(255,255,255,.05);color:#fff}
+.nav a.on{background:rgba(255,255,255,.08);color:#fff}
+.ico{width:17px;height:17px;flex:0 0 17px;stroke:currentColor;stroke-width:1.8;fill:none}
+.users{padding:12px 16px;display:flex;align-items:center;position:relative;z-index:1;border-top:1px solid rgba(255,255,255,.07)}
+.av{width:28px;height:28px;border-radius:50%;border:2px solid #0a1c44;display:grid;place-items:center;font-size:10px;font-weight:700;color:#fff;font-family:'Archivo';margin-left:-8px}
+.av:first-child{margin-left:0}
+.users .meta{margin-left:11px;font-size:10.5px;color:#8fa0c4;line-height:1.3}
+.users .meta b{color:#cfd8ec;font-weight:600;display:block;font-size:11.5px}
+
+/* MAIN */
+.main{flex:1;display:flex;flex-direction:column;min-width:0}
+.top{background:var(--paper);border-bottom:1px solid var(--line);padding:13px 22px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.dhead{display:flex;align-items:center;gap:11px}
+.dchip{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;color:#fff;font-family:'Archivo';font-weight:800;font-size:14px;flex:0 0 32px}
+.dhead h2{font-family:'Archivo';font-weight:700;font-size:17px;letter-spacing:-.3px}
+.dhead p{font-size:11.5px;color:var(--ink-2);font-weight:500;margin-top:1px}
+.spacer{flex:1}
+.btn{border:none;cursor:pointer;font-family:'Hanken Grotesk';font-weight:600;font-size:12.5px;border-radius:10px;padding:9px 14px;display:flex;align-items:center;gap:7px;transition:.15s}
+.btn .ico{stroke-width:2;width:15px;height:15px}
+.btn-ghost{background:var(--canvas);color:var(--ink);border:1px solid var(--line)}
+.btn-ghost:hover{background:#e7ebf3}
+.btn-go{background:linear-gradient(135deg,var(--garnet),#7e0034);color:#fff;box-shadow:0 8px 20px rgba(165,0,68,.3)}
+.btn-go:hover{filter:brightness(1.07)}
+
+.viewtabs{background:var(--paper);padding:0 22px;border-bottom:1px solid var(--line);display:flex;gap:2px}
+.vtab{padding:12px 18px;cursor:pointer;font-weight:600;font-size:13px;color:var(--ink-2);border-bottom:2.5px solid transparent;transition:.15s;display:flex;align-items:center;gap:8px}
+.vtab:hover{color:var(--ink)}
+.vtab.active{color:var(--garnet);border-color:var(--garnet)}
+
+.scroll{flex:1;overflow:auto;padding:18px 22px}
+.view{display:none} .view.show{display:block}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:15px;box-shadow:var(--shadow);overflow:hidden}
+.cardpad{padding:18px 20px}
+.chead{display:flex;align-items:center;justify-content:space-between;padding:13px 18px;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:10px}
+.chead h3{font-family:'Archivo';font-size:14px;font-weight:700;display:flex;align-items:center;gap:9px}
+.sub{font-size:12px;color:var(--ink-2);font-weight:500}
+
+/* ===== DAY TABS ===== */
+.days{display:flex;gap:2px;margin-bottom:14px;background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:4px;width:fit-content;box-shadow:var(--shadow)}
+.day{padding:7px 15px;cursor:pointer;font-weight:600;font-size:12.5px;color:var(--ink-2);border-radius:8px;transition:.14s;display:flex;align-items:center;gap:7px}
+.day:hover{background:var(--canvas)}
+.day.active{background:var(--garnet);color:#fff}
+.day small{font-family:'Spline Sans Mono';font-size:10px;opacity:.7}
+.matchbadge{font-size:8.5px;font-weight:700;color:#7e0034;background:var(--gold);padding:1px 5px;border-radius:4px;text-transform:uppercase}
+.day.active .matchbadge{background:var(--gold)}
+
+/* ===== HALF-HOUR GRID ===== */
+.legend{display:flex;gap:13px;align-items:center;flex-wrap:wrap}
+.lg{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ink-2);font-weight:500}
+.lgsw{width:15px;height:11px;border-radius:3px;border:1px solid rgba(0,0,0,.06)}
+.lg-vac{background:repeating-linear-gradient(45deg,#f0c45a,#f0c45a 3px,#f8dd97 3px,#f8dd97 6px)}
+.lg-comp{position:relative;overflow:hidden}
+.lg-comp::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(45deg,transparent,transparent 3px,rgba(255,255,255,.5) 3px,rgba(255,255,255,.5) 6px)}
+.lg-band{background:var(--band);border:1px dashed #c8d0e0}
+
+.gwrap{overflow-x:auto;position:relative}
+.grow{display:flex;align-items:stretch;border-bottom:1px solid var(--line-2)}
+.gmeta{position:sticky;left:0;z-index:5;background:var(--paper);display:flex;align-items:center;border-right:2px solid var(--line)}
+.c-obs{flex:0 0 16px} 
+.c-name{flex:0 0 188px;padding:0 10px;display:flex;align-items:center;gap:8px;overflow:hidden}
+.c-base{flex:0 0 46px;text-align:center;border-left:1px solid var(--line-2)}
+.c-ent{flex:0 0 56px;text-align:center;border-left:1px solid var(--line-2)}
+.c-tot{flex:0 0 46px;text-align:center;border-left:1px solid var(--line-2)}
+.avmini{width:25px;height:25px;border-radius:7px;flex:0 0 25px;display:grid;place-items:center;color:#fff;font-size:9.5px;font-weight:700;font-family:'Archivo'}
+.nm b{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:120px}
+.nm span{font-size:9.5px;display:flex;align-items:center;gap:4px}
+.pill{font-size:8.5px;font-weight:700;padding:1px 4px;border-radius:4px}
+.p-M{background:#fde6c7;color:#8a5e00}.p-T{background:#dbe7fb;color:#1e4f93}.p-F{background:#d8f1e7;color:#0f6e4f}
+.lock{stroke:var(--ink-3);stroke-width:1.8;fill:none;width:11px;height:11px}
+.mono{font-family:'Spline Sans Mono'}
+.c-base b,.c-tot b{font-family:'Spline Sans Mono';font-size:12px;font-weight:600}
+.c-base small,.c-tot small{font-size:8.5px;color:var(--ink-3);display:block}
+.c-ent{font-family:'Spline Sans Mono';font-size:11.5px;color:var(--ink)}
+
+.cells{display:flex;flex:0 0 auto}
+.cell{width:var(--cell);flex:0 0 var(--cell);border-right:1px solid #eef1f6;position:relative}
+.cell.hourend{border-right:1px solid #dde3ee}
+.cell.band{background:var(--band)}
+.grow{height:42px}
+.cell .fill{position:absolute;inset:5px 0;}
+.cell.w .fill{background:var(--dc)}
+.cell.w.s .fill{border-radius:7px 0 0 7px;left:2px}
+.cell.w.e .fill{border-radius:0 7px 7px 0;right:2px}
+.cell.w.s.e .fill{border-radius:7px}
+.cell.w .fill::after{content:"";position:absolute;top:0;bottom:0;right:0;width:1px;background:rgba(255,255,255,.18)}
+.cell.w.e .fill::after{display:none}
+.cell.comp .fill{background-image:repeating-linear-gradient(45deg,transparent,transparent 4px,rgba(255,255,255,.28) 4px,rgba(255,255,255,.28) 8px)}
+.cell.vac .fill{background:repeating-linear-gradient(45deg,#eebf52,#eebf52 4px,#f7da90 4px,#f7da90 8px)!important}
+.entlabel{position:absolute;top:50%;left:6px;transform:translateY(-50%);font-family:'Spline Sans Mono';font-size:9.5px;color:#fff;font-weight:600;white-space:nowrap;z-index:2;pointer-events:none;text-shadow:0 1px 2px rgba(0,0,0,.22)}
+.entlabel.dark{color:#7a5500;text-shadow:none}
+
+/* time header */
+.ghead{position:sticky;top:0;z-index:8;background:var(--paper)}
+.ghead .grow{height:36px;border-bottom:1px solid var(--line)}
+.ghead .gmeta{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:700}
+.ghead .c-name{font-weight:700}
+.hourcell{width:calc(var(--cell)*2);flex:0 0 calc(var(--cell)*2);display:flex;align-items:center;justify-content:center;font-family:'Spline Sans Mono';font-size:11px;color:var(--ink-2);border-right:1px solid #dde3ee;position:relative}
+.hourcell .half{position:absolute;right:0;top:0;bottom:0;width:1px}
+.bandhead{background:var(--band)}
+.bandtag{position:absolute;top:2px;left:50%;transform:translateX(-50%);font-size:8px;color:var(--ink-3);font-weight:700;white-space:nowrap;letter-spacing:.03em}
+
+/* coverage row */
+.crow{display:flex;align-items:stretch;border-top:2px solid var(--line);background:#fbfcfe;height:46px}
+.crow .gmeta{background:#fbfcfe;font-family:'Archivo';font-size:11.5px;font-weight:700;color:var(--ink)}
+.crow .c-name{font-weight:700;padding-left:12px}
+.ccell{width:var(--cell);flex:0 0 var(--cell);display:flex;align-items:center;justify-content:center;font-family:'Spline Sans Mono';font-size:11px;font-weight:600;border-right:1px solid #eef1f6}
+.ccell small{font-size:9px}
+
+/* ===== EQUIPO TABLE ===== */
+.teamtools{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+.search{flex:1;max-width:280px;display:flex;align-items:center;gap:8px;background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:9px 12px;box-shadow:var(--shadow)}
+.search input{border:none;outline:none;font-family:inherit;font-size:13px;flex:1;background:transparent;color:var(--ink)}
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{text-align:left;padding:11px 14px;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);font-weight:700;border-bottom:1px solid var(--line);white-space:nowrap}
+.tbl td{padding:10px 14px;border-bottom:1px solid var(--line-2);vertical-align:middle}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tr:hover td{background:#fafbfd}
+.te-name{display:flex;align-items:center;gap:10px}
+.te-name b{font-weight:600;font-size:13px}
+.te-name span{font-size:11px;color:var(--ink-3);font-family:'Spline Sans Mono'}
+.sel{appearance:none;border:1px solid var(--line);background:var(--canvas);border-radius:8px;padding:5px 26px 5px 9px;font-family:inherit;font-size:12px;font-weight:500;color:var(--ink);cursor:pointer;
+ background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235a657c' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center}
+.basecell b{font-family:'Spline Sans Mono';font-weight:600}
+.basecell small{color:var(--ink-3);font-size:11px;margin-left:4px}
+.tg{position:relative;width:36px;height:20px;border-radius:11px;background:#cdd5e3;cursor:pointer;transition:.18s;flex:0 0 36px}
+.tg.on{background:var(--garnet)}
+.tg::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:.18s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.tg.on::after{transform:translateX(16px)}
+.vacbadge{font-size:11px;font-weight:600;font-family:'Spline Sans Mono';color:var(--gold-deep);background:#fdf4dd;padding:3px 8px;border-radius:7px}
+.vacbadge.none{color:var(--ink-3);background:var(--canvas)}
+.editbtn{border:none;background:var(--canvas);border-radius:8px;width:30px;height:30px;display:grid;place-items:center;cursor:pointer;color:var(--ink-2)}
+.editbtn:hover{background:var(--garnet);color:#fff}
+.addrow{margin-top:14px;width:100%;border:1px dashed var(--line);background:#fafbfd;border-radius:12px;padding:11px;font-weight:600;font-size:13px;color:var(--ink-2);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
+.addrow:hover{border-color:var(--garnet-soft);color:var(--garnet)}
+
+/* ===== PARÁMETROS ===== */
+.pgrid{display:grid;grid-template-columns:1.1fr 1fr;gap:18px;align-items:start}
+.psec h4{font-family:'Archivo';font-size:13px;font-weight:700;margin-bottom:3px;display:flex;align-items:center;gap:8px}
+.psec .desc{font-size:12px;color:var(--ink-2);margin-bottom:14px}
+.hours-tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+.hours-tbl th{text-align:left;padding:8px 10px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3);font-weight:700;border-bottom:1px solid var(--line)}
+.hours-tbl td{padding:7px 10px;border-bottom:1px solid var(--line-2)}
+.hours-tbl tr:last-child td{border-bottom:none}
+.timeinput{font-family:'Spline Sans Mono';font-size:12px;font-weight:500;border:1px solid var(--line);border-radius:7px;padding:4px 7px;width:62px;text-align:center;background:var(--canvas);color:var(--ink)}
+.daytag{font-weight:600}
+.daytag.match{color:var(--garnet)}
+.minmax{display:flex;align-items:center;gap:6px}
+.num{font-family:'Spline Sans Mono';font-size:12px;border:1px solid var(--line);border-radius:7px;padding:4px 6px;width:46px;text-align:center;background:var(--canvas);color:var(--ink)}
+.field{margin-bottom:13px}
+.field label{font-size:11.5px;font-weight:600;color:var(--ink-2);display:block;margin-bottom:5px}
+.field .hint{font-size:11px;color:var(--ink-3);font-weight:400}
+
+/* billing */
+.bill-days{display:grid;grid-template-columns:repeat(7,1fr);gap:7px;margin-bottom:6px}
+.bd{background:var(--canvas);border:1px solid var(--line);border-radius:10px;padding:8px 6px;text-align:center}
+.bd label{font-size:10px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em}
+.bd .eur{display:flex;align-items:center;justify-content:center;gap:1px;margin-top:4px}
+.bd .eur input{border:none;background:transparent;font-family:'Spline Sans Mono';font-size:13px;font-weight:600;width:46px;text-align:center;color:var(--ink);outline:none}
+.bd .eur span{font-family:'Spline Sans Mono';font-size:11px;color:var(--ink-3)}
+.bd.match{border-color:var(--gold-deep);background:#fdf6e3}
+.bd.match label{color:var(--gold-deep)}
+
+.chartbox{margin-top:12px;border:1px solid var(--line);border-radius:12px;padding:14px 14px 8px;background:#fbfcfe}
+.chart{display:flex;align-items:flex-end;gap:4px;height:130px;position:relative;padding-top:6px}
+.chart .col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;position:relative;cursor:ns-resize}
+.chart .rev{width:100%;background:linear-gradient(180deg,var(--garnet-soft),var(--garnet));border-radius:4px 4px 0 0;transition:height .3s}
+.chart .heads{position:absolute;width:7px;height:7px;border-radius:50%;background:var(--gold-deep);box-shadow:0 0 0 3px rgba(224,161,0,.18);z-index:2}
+.chart .hl{font-family:'Spline Sans Mono';font-size:8.5px;color:var(--ink-3);margin-top:3px}
+.chleg{display:flex;gap:16px;margin-top:10px;font-size:11px;color:var(--ink-2);font-weight:500}
+.chleg span{display:flex;align-items:center;gap:6px}
+.chleg .s1{width:12px;height:12px;border-radius:3px;background:var(--garnet)}
+.chleg .s2{width:9px;height:9px;border-radius:50%;background:var(--gold-deep)}
+.prodbox{display:flex;align-items:center;gap:12px;margin-top:14px;padding:12px 14px;background:var(--canvas);border-radius:11px;border:1px solid var(--line)}
+.prodbox .lab{font-size:12px;font-weight:600}
+.prodbox .lab small{display:block;font-weight:400;color:var(--ink-3);font-size:10.5px}
+.prodbox .res{margin-left:auto;text-align:right}
+.prodbox .res b{font-family:'Archivo';font-size:20px;font-weight:800;color:var(--garnet)}
+.prodbox .res small{display:block;font-size:10.5px;color:var(--ink-3)}
+.eurinput{font-family:'Spline Sans Mono';font-size:13px;border:1px solid var(--line);border-radius:8px;padding:6px 9px;width:74px;text-align:center;background:var(--paper);color:var(--ink)}
+.note{font-size:11.5px;color:var(--ink-2);background:#eef6ff;border:1px solid #d6e6fb;border-radius:10px;padding:10px 12px;margin-top:14px;line-height:1.4;display:flex;gap:8px}
+.note .ico{flex:0 0 16px;width:16px;height:16px;stroke:var(--blau-bright);margin-top:1px}
+
+/* grid toolbar + view toggle */
+.gridbar{display:flex;align-items:center;gap:14px;margin-bottom:14px;flex-wrap:wrap}
+.gridtoggle{display:flex;background:var(--paper);border:1px solid var(--line);border-radius:11px;padding:4px;box-shadow:var(--shadow)}
+.gt{border:none;background:transparent;cursor:pointer;font-family:'Hanken Grotesk';font-weight:600;font-size:12.5px;color:var(--ink-2);padding:7px 14px;border-radius:8px;transition:.14s}
+.gt:hover{color:var(--ink)}
+.gt.active{background:var(--garnet);color:#fff}
+
+/* week stacked */
+.dayblock{margin-bottom:16px}
+.dayblock h5{font-family:'Archivo';font-size:13px;font-weight:700;margin:0 0 7px 2px;display:flex;align-items:center;gap:9px}
+.dbtag{font-size:9.5px;font-weight:700;padding:2px 8px;border-radius:6px;text-transform:uppercase;letter-spacing:.03em}
+.dbtag.match{background:var(--gold);color:#7e0034}
+.dbtag.inv{background:#e7e0fb;color:#5b32b0}
+.gscroll{overflow-x:auto;border:1px solid var(--line);border-radius:14px;background:var(--paper);box-shadow:var(--shadow)}
+
+/* % por franja editor */
+.profiles{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.prof{border:1px solid var(--line);background:var(--canvas);cursor:pointer;font-family:inherit;font-weight:600;font-size:12px;color:var(--ink-2);padding:6px 12px;border-radius:9px;transition:.14s}
+.prof.active{background:var(--garnet);color:#fff;border-color:var(--garnet)}
+.pctsum{margin-left:auto;font-family:'Spline Sans Mono';font-size:12px;font-weight:600;color:var(--ok)}
+.pctgrid{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.pctchip{display:flex;align-items:center;gap:3px;background:var(--canvas);border:1px solid var(--line);border-radius:8px;padding:3px 6px 3px 8px}
+.pctchip span{font-family:'Spline Sans Mono';font-size:10.5px;color:var(--ink-3);font-weight:600}
+.pctchip input{width:30px;border:none;background:transparent;font-family:'Spline Sans Mono';font-size:12px;font-weight:600;text-align:right;color:var(--garnet);outline:none}
+.pctchip i{font-style:normal;font-size:10px;color:var(--ink-3)}
+
+/* import excel */
+.import{display:flex;align-items:center;gap:11px;border:1.5px dashed #c8d0e0;background:#fafbfd;border-radius:12px;padding:11px 13px;margin-bottom:10px;cursor:pointer;transition:.15s}
+.import:hover{border-color:var(--garnet-soft);background:#fdf5f8}
+.import svg{width:22px;height:22px;stroke:var(--garnet);stroke-width:1.7;fill:none;flex:0 0 22px}
+.import b{font-size:12.5px;font-weight:600;display:block}
+.import small{font-size:11px;color:var(--ink-3)}
+.import .impbtn{margin-left:auto;background:var(--garnet);color:#fff;font-size:11.5px;font-weight:600;padding:6px 12px;border-radius:8px}
+
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(140%);background:var(--ink);color:#fff;padding:13px 18px;border-radius:13px;display:flex;align-items:center;gap:11px;font-size:13px;font-weight:500;box-shadow:0 24px 60px rgba(6,24,58,.28);z-index:50;transition:transform .35s cubic-bezier(.2,.9,.3,1.2)}
+.toast.show{transform:translateX(-50%) translateY(0)}
+.toast .dotok{width:9px;height:9px;border-radius:50%;background:var(--gold);box-shadow:0 0 0 4px rgba(255,203,5,.2)}
+.toast b{font-weight:700}
+
+/* PRINT A3 */
+@page{size:A3 landscape;margin:7mm}
+@media print{
+  body{display:block;height:auto;overflow:visible;background:#fff}
+  .side,.top,.viewtabs,.gridbar,.days,#daycard,.mockbar,.toast{display:none!important}
+  .scroll{overflow:visible;padding:0}
+  .view{display:none!important} #view-grid{display:block!important}
+  #weekwrap{display:block!important}
+  :root{--cell:13px}
+  .gscroll{overflow:visible;border:none;box-shadow:none;border-radius:0}
+  .dayblock{break-inside:avoid;margin-bottom:3mm}
+  .dayblock h5{font-size:9px;margin-bottom:2px}
+  .grow{height:15px}
+  .nm b{font-size:7px;max-width:78px} .nm span,.c-base small,.c-tot small{display:none}
+  .avmini{width:13px;height:13px;font-size:6px;border-radius:3px}
+  .c-name{flex:0 0 96px;padding:0 4px;gap:4px} .c-base{flex:0 0 24px} .c-ent{flex:0 0 30px;font-size:7px} .c-tot{flex:0 0 24px}
+  .c-base b,.c-tot b{font-size:8px} .hourcell{font-size:7px} .ccell{font-size:7px}
+  .ghead .grow{height:13px} .crow{height:14px}
+  .entlabel{font-size:6px} .cell .fill{inset:2px 0}
+}
+</style>
+</head>
+<body>
+<aside class="side">
+  <div class="brand"><div class="crest"><span>FC</span></div><div><h1>Camp Nou Planner</h1><p>Botiga oficial</p></div></div>
+  <div class="slabel">Departamentos</div>
+  <div class="depts" id="depts"></div>
+  <nav class="nav">
+    <a id="nv-grid" class="on" onclick="setView('grid')"><svg class="ico" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v16"/></svg> Cuadrícula</a>
+    <a id="nv-team" onclick="setView('team')"><svg class="ico" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0M16 5.5a3 3 0 0 1 0 5.8M20.5 19a4.8 4.8 0 0 0-3.4-4.6"/></svg> Equipo</a>
+    <a id="nv-params" onclick="setView('params')"><svg class="ico" viewBox="0 0 24 24"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.4 1a7 7 0 0 0-2-1.2l-.4-2.5h-4l-.4 2.5a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.5A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.5 2 3.4 2.4-1a7 7 0 0 0 2 1.2l.4 2.5h4l.4-2.5a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.5c.1-.4.1-.8.1-1.2Z"/></svg> Parámetros</a>
+    <a onclick="setView('grid')"><svg class="ico" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4M8 14l2.5 2.5L16 11"/></svg> Vacaciones</a>
+  </nav>
+  <div class="users">
+    <div class="av" style="background:#a50044">MR</div><div class="av" style="background:#004d98">JT</div><div class="av" style="background:#1d9e75">VG</div><div class="av" style="background:#33405c;font-size:9px">+2</div>
+    <div class="meta"><b>5 encargados</b>Marc · fa 2 min</div>
+  </div>
+</aside>
+
+<div class="main">
+  <div class="top">
+    <div class="dhead"><div class="dchip" id="dchip">A</div><div><h2 id="dname">Apparel</h2><p id="dsub">9 personas · 215 h / semana</p></div></div>
+    <div class="spacer"></div>
+    <button class="btn btn-ghost"><svg class="ico" viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14"/></svg> Exportar Cegid</button>
+    <button class="btn btn-go" id="gen"><svg class="ico" viewBox="0 0 24 24"><path d="M5 12l3 3 5-7M13 5l2 2M19 4l-1.5 3.5L14 9l3.5 1.5L19 14l1.5-3.5L24 9"/></svg> Generar</button>
+  </div>
+  <div class="viewtabs">
+    <div class="vtab active" id="vt-grid" onclick="setView('grid')"><svg class="ico" viewBox="0 0 24 24" style="width:15px;height:15px"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v16"/></svg> Cuadrícula</div>
+    <div class="vtab" id="vt-team" onclick="setView('team')"><svg class="ico" viewBox="0 0 24 24" style="width:15px;height:15px"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0M16 5.5a3 3 0 0 1 0 5.8"/></svg> Equipo</div>
+    <div class="vtab" id="vt-params" onclick="setView('params')"><svg class="ico" viewBox="0 0 24 24" style="width:15px;height:15px"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7ZM12 2v3M12 19v3M5 12H2M22 12h-3"/></svg> Parámetros</div>
+  </div>
+
+  <div class="scroll">
+    <!-- ===== GRID VIEW ===== -->
+    <section class="view show" id="view-grid">
+      <div class="gridbar">
+        <div class="gridtoggle">
+          <button class="gt active" id="gt-dia" onclick="setGridMode('dia')">Por día</button>
+          <button class="gt" id="gt-sem" onclick="setGridMode('semana')">Semana completa</button>
+        </div>
+        <div class="legend">
+          <div class="lg"><span class="lgsw" id="lg-normal"></span> Normales</div>
+          <div class="lg"><span class="lgsw lg-comp" id="lg-comp2"></span> Complem.</div>
+          <div class="lg"><span class="lgsw lg-vac"></span> Vacaciones</div>
+          <div class="lg"><span class="lgsw lg-band"></span> Montaje/Cierre</div>
+        </div>
+        <div class="spacer"></div>
+        <button class="btn btn-ghost" onclick="printWeek()"><svg class="ico" viewBox="0 0 24 24"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-2M6 14h12v7H6Z"/></svg> Imprimir A3</button>
+      </div>
+      <div class="days" id="days"></div>
+      <div class="card" id="daycard">
+        <div class="chead">
+          <h3><svg class="ico" viewBox="0 0 24 24" style="stroke:var(--garnet);width:16px;height:16px"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11M13 9v11M5 9v11"/></svg> Cuadrante por franjas de media hora · <span id="daylabel">Lunes</span></h3>
+          <span class="sub">desde 07:00 por defecto · se adapta a los horarios de cada día</span>
+        </div>
+        <div class="gwrap" id="gwrap"></div>
+      </div>
+      <div id="weekwrap" style="display:none"></div>
+    </section>
+
+    <!-- ===== TEAM VIEW ===== -->
+    <section class="view" id="view-team">
+      <div class="teamtools">
+        <div class="search"><svg class="ico" viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--ink-3)"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input placeholder="Buscar persona…"></div>
+        <button class="btn btn-ghost"><svg class="ico" viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></svg> Filtros</button>
+        <div class="spacer"></div>
+        <button class="btn btn-go"><svg class="ico" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> Añadir persona</button>
+      </div>
+      <div class="card"><div style="overflow-x:auto"><table class="tbl" id="teamtbl"></table></div>
+        <div style="padding:0 18px 16px"><button class="addrow"><svg class="ico" viewBox="0 0 24 24" style="width:15px;height:15px"><path d="M12 5v14M5 12h14"/></svg> Añadir persona al equipo de Apparel</button></div>
+      </div>
+    </section>
+
+    <!-- ===== PARAMS VIEW ===== -->
+    <section class="view" id="view-params">
+      <div class="pgrid">
+        <div style="display:flex;flex-direction:column;gap:18px">
+          <div class="card"><div class="cardpad psec">
+            <h4><svg class="ico" viewBox="0 0 24 24" style="stroke:var(--garnet);width:16px;height:16px"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg> Horario de tienda por día</h4>
+            <p class="desc">Apertura y cierre de cada día. Marca los días de partido (cierre ampliado).</p>
+            <table class="hours-tbl"><thead><tr><th>Día</th><th>Apertura</th><th>Cierre</th><th>Partido</th></tr></thead><tbody id="hourstbl"></tbody></table>
+          </div></div>
+
+          <div class="card"><div class="cardpad psec">
+            <h4><svg class="ico" viewBox="0 0 24 24" style="stroke:var(--blau);width:16px;height:16px"><path d="M3 21V8l9-5 9 5v13M9 21v-6h6v6"/></svg> Franjas sin facturación</h4>
+            <p class="desc">Personal de montaje antes de abrir y de cierre/arreglo tras cerrar. Mín. y máx. por franja.</p>
+            <table class="hours-tbl"><tbody>
+              <tr><td class="daytag">Montaje (pre-apertura)</td><td><input class="timeinput" value="07:30"></td><td>→ apertura</td><td><div class="minmax"><input class="num" value="2"><span style="color:var(--ink-3)">–</span><input class="num" value="3"></div></td></tr>
+              <tr><td class="daytag">Cierre / arreglo tienda</td><td>cierre →</td><td><input class="timeinput" value="+30 min"></td><td><div class="minmax"><input class="num" value="2"><span style="color:var(--ink-3)">–</span><input class="num" value="3"></div></td></tr>
+              <tr><td class="daytag match">Almacén inicio (LUN/JUE)</td><td><input class="timeinput" value="07:00"></td><td><input class="timeinput" value="15:00"></td><td><div class="minmax"><input class="num" value="1"><span style="color:var(--ink-3)">–</span><input class="num" value="2"></div></td></tr>
+            </tbody></table>
+          </div></div>
+
+          <div class="card"><div class="cardpad psec">
+            <h4><svg class="ico" viewBox="0 0 24 24" style="stroke:var(--teal);width:16px;height:16px"><path d="M12 2v20M5 5l7-3 7 3M5 5v6a7 7 0 0 0 14 0V5"/></svg> Base horaria → jornada</h4>
+            <p class="desc">Regla fija: las horas por día se derivan del contrato semanal (5 días, 2 libres).</p>
+            <table class="hours-tbl"><thead><tr><th>Contrato</th><th>Días/semana</th><th>Horas/día</th><th>Libres</th></tr></thead><tbody>
+              <tr><td class="mono" style="font-weight:600">40 h</td><td class="mono">5</td><td class="mono">8 h</td><td class="mono">2</td></tr>
+              <tr><td class="mono" style="font-weight:600">35 h</td><td class="mono">5</td><td class="mono">7 h</td><td class="mono">2</td></tr>
+              <tr><td class="mono" style="font-weight:600">25 h</td><td class="mono">5</td><td class="mono">5 h</td><td class="mono">2</td></tr>
+              <tr><td class="mono" style="font-weight:600">20 h</td><td class="mono">5</td><td class="mono">4 h</td><td class="mono">2</td></tr>
+            </tbody></table>
+          </div></div>
+        </div>
+
+        <div class="card"><div class="cardpad psec">
+          <h4><svg class="ico" viewBox="0 0 24 24" style="stroke:var(--garnet);width:16px;height:16px"><path d="M12 2v20M17 6a4 4 0 0 0-4-2H10a3 3 0 0 0 0 6h4a3 3 0 0 1 0 6h-3a4 4 0 0 1-4-2"/></svg> Facturación → demanda</h4>
+          <p class="desc">De aquí sale cuánta gente necesitas en cada franja. Es el corazón del motor.</p>
+
+          <div class="field"><label>1 · Facturación diaria prevista <span class="hint">(€/día)</span></label>
+            <div class="import" onclick="fakeImport()">
+              <svg viewBox="0 0 24 24"><path d="M12 16V4m0 0 4 4m-4-4-4 4M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+              <div><b>Importar mes desde Excel</b><small>arrastra el .xlsx con la facturación diaria del mes (auto-rellena las semanas)</small></div>
+              <span class="impbtn">Subir</span>
+            </div>
+            <div class="bill-days" id="billdays"></div>
+          </div>
+
+          <div class="field"><label>2 · Reparto por franja horaria <span class="hint">(% de la venta del día)</span></label>
+            <div class="profiles">
+              <button class="prof active" id="pf-normal" onclick="setProfile('normal')">Día normal</button>
+              <button class="prof" id="pf-partido" onclick="setProfile('partido')">Día de partido ⚽</button>
+              <span class="pctsum" id="pctsum">Σ 100%</span>
+            </div>
+            <div class="pctgrid" id="pctgrid"></div>
+            <div class="chartbox">
+              <div class="chart" id="chart"></div>
+              <div class="chleg"><span><span class="s1"></span> Venta por franja</span><span><span class="s2"></span> Personas necesarias</span></div>
+            </div>
+          </div>
+
+          <div class="field" style="margin-bottom:0"><label>3 · Productividad <span class="hint">(define cuánta venta cubre una persona)</span></label>
+            <div class="prodbox">
+              <div class="lab">≈ <input class="eurinput" id="prod" value="220"> € / persona·hora<small>ventas medias que atiende 1 persona</small></div>
+              <div class="res"><b id="peakheads">9</b><small>pico de personas</small></div>
+            </div>
+          </div>
+          <div class="note"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v.5M12 11v5"/></svg><div><b>Venta de la franja ÷ productividad = personas objetivo.</b> El día de partido usa su propio reparto (la venta pesa más por la tarde-noche), y el motor reparte los turnos para cubrir esa curva.</div></div>
+        </div></div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div class="toast" id="toast"><span class="dotok"></span><span id="toastmsg"></span></div>
+<script>
+const DEPTS=[
+ {id:'apparel',n:'Apparel',c:'#a50044'},{id:'perf',n:'Performance',c:'#004d98'},
+ {id:'petits',n:'Petits Culers',c:'#e0a100'},{id:'acc',n:'Accesorios',c:'#1d9e75'},
+ {id:'cajas',n:'Cajas',c:'#7a4dd0'},{id:'almacen',n:'Almacén',c:'#5f6470'},
+];
+const TEAM={
+ apparel:[
+  ['Garcia Carro, Adria','49325784F',25,'M',false,0],['Sorribas, Clara','45154264C',25,'M',false,0],
+  ['Vasquez, Marian','47326578F',25,'M',false,0],['Padulles, Anna','77750682X',25,'F',false,0],
+  ['Bastit, Jana','48089226K',25,'T',false,0],['Rabasco, Arnau','21772684X',25,'T',false,0],
+  ['Khayari, Hajar','13413178S',25,'T',false,5],['Gimenez, Miguel','Y4985730B',35,'F',false,0],
+  ['Casas, David','46417617Y',25,'F',true,0]],
+ perf:[['Ilagan, Joey','54177318J',35,'F',false,0],['Chowdhury, Bashar','Y2250363B',25,'M',false,0],['Pastor, Carlos','46490290E',25,'F',false,0],['Hernandez, Oscar','47864939F',25,'T',false,0],['Perret, Gwenola','Y0003039V',25,'F',false,0],['Rodriguez, Ainhoa','39443160T',25,'T',false,7],['Cumellas, Andrea','48095659Z',20,'M',false,0]],
+ petits:[['Dot i Grau, Martina','49325064T',25,'M',false,0],['Fajardo, Edymar','26272831T',25,'F',false,0],['Suarez, Rocio','49300464X',25,'T',false,3],['Nikabadze, Sofia','60492129J',25,'M',false,0]],
+ acc:[['Borja, Melissa','49491064D',25,'M',false,0],['Ji Chen, Elena','54765375Y',25,'T',false,0],['Jimenez, Paula','47672042B',25,'M',false,0],['Pérez, Laia','46012233K',25,'T',false,0],['Roca, Pau','45998112M',25,'F',false,0]],
+ cajas:[['Serra, Mar','46221190L',25,'M',false,0],['Vidal, Joan','47883320T',25,'T',false,0],['Costa, Aina','45667712P',25,'F',false,0],['Mas, Nil','49001823R',20,'M',false,0],['Pons, Berta','46778201D',25,'T',false,0],['Ferrer, Ona','45112098X',25,'M',false,0],['Soler, Marc','47220981B',25,'F',true,0],['Camps, Lia','46339017K',25,'T',false,0]],
+ almacen:[['Solé, Pere','46110023A',40,'M',false,0],['Riba, Toni','47220112C',25,'F',false,0],['Tomàs, Quim','45667234D',25,'M',false,0],['Vila, Aleix','49118822M',25,'M',false,0]],
+};
+const DAYS=[
+ {k:'LUN',n:'Lunes',d:'27',open:480,close:1260},
+ {k:'MAR',n:'Martes',d:'28',open:480,close:1260},
+ {k:'MIE',n:'Miércoles',d:'29',open:480,close:1260},
+ {k:'JUE',n:'Jueves',d:'30',open:480,close:1500,inv:true},   // INVENTARIO: cierra 01:00
+ {k:'VIE',n:'Viernes',d:'31',open:480,close:1260},
+ {k:'SAB',n:'Sábado',d:'1',open:480,close:1380,match:true},  // PARTIDO: cierra 23:00
+ {k:'DOM',n:'Domingo',d:'2',open:540,close:1260},
+];
+const MONT=30, CIE=30;                                       // montaje / cierre (min)
+const lockSvg='<svg class="lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
+function hh(m){let x=((m%1440)+1440)%1440;return String(Math.floor(x/60)).padStart(2,'0')+':'+String(x%60).padStart(2,'0')}
+function hash(s){let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))>>>0;return h}
+function init2(n){return n.split(',')[0].slice(0,2).toUpperCase()}
+function gridStart(d){return Math.min(420, d.open-MONT)}      // SIEMPRE desde 07:00 por defecto
+function gridEnd(d){return d.close+CIE}
+let curDept='apparel',curDay=0,curView='grid',gridMode='dia',billProfile='normal';
+
+function shiftFor(e,di){
+  const [nm,,base,av,fixed,vac]=e, len=Math.round(base/5*2);
+  const d=DAYS[di];
+  if(vac&&(d.k==='SAB'||d.k==='DOM'))return{vac:true};
+  const h=hash(nm+curDept), off=[h%7,(h*3+2)%7];
+  if(fixed){ if(di>=5)return null; return{start:600,len,comp:false}; }
+  if(off.includes(di))return null;
+  const late=d.match||d.inv, closeEnd=d.close+CIE;
+  let s = av==='M'? 420+(h%6)*30 : av==='T'? (late? d.close-len*30-(h%4)*30 : 780+(h%8)*30) : 420+(h%18)*30;
+  if(s<420)s=420; if(s+len*30>closeEnd)s=closeEnd-len*30;
+  return{start:s,len,comp:(h%9===0)};
+}
+
+function buildDayBlock(di){
+  const dept=DEPTS.find(d=>d.id===curDept), c=dept.c, team=TEAM[curDept], d=DAYS[di];
+  const t0=gridStart(d), t1=gridEnd(d), n=(t1-t0)/30;
+  const SHAPE={8:.3,9:.5,10:.85,11:1,12:1,13:.8,14:.7,15:.7,16:.85,17:.9,18:.9,19:.85,20:.5,21:.45,22:.45,23:.4,0:.35,1:.3};
+  const peakN=(d.match||d.inv)?9:8;
+  let cov=new Array(n).fill(0);
+  let html=`<div class="ghead"><div class="grow"><div class="gmeta"><div class="c-obs"></div><div class="c-name">Empleado</div><div class="c-base">Base</div><div class="c-ent">Entrada</div><div class="c-tot">Total</div></div><div class="cells">`;
+  for(let k=0;k<n;k++){const mn=t0+k*30,band=(mn<d.open)||(mn>=d.close);
+    if(mn%60===0){html+=`<div class="hourcell ${band?'bandhead':''}">${hh(mn)}`;
+      if(mn===t0)html+=`<span class="bandtag">Montaje</span>`;
+      if(mn===d.close)html+=`<span class="bandtag">Cierre</span>`;
+      html+=`</div>`;}}
+  html+=`</div></div></div>`;
+  team.forEach(e=>{
+    const sh=shiftFor(e,di); const [nm,,base,av,fixed]=e; const len=Math.round(base/5*2);
+    let wk=0; for(let dd=0;dd<7;dd++){const s=shiftFor(e,dd); if(s&&!s.vac)wk+=len/2;}
+    const ent= sh&&!sh.vac? hh(sh.start):'—'; const tot= sh? (sh.vac?'VAC':len/2):0;
+    html+=`<div class="grow"><div class="gmeta"><div class="c-obs"></div>
+      <div class="c-name"><div class="avmini" style="background:${c}">${init2(nm)}</div>
+        <div class="nm"><b>${nm}</b><span><span class="pill p-${av}">${av}</span>${fixed?lockSvg:''}</span></div></div>
+      <div class="c-base"><b>${base}</b><small>${len/2}h/d</small></div><div class="c-ent">${ent}</div>
+      <div class="c-tot"><b>${tot}</b><small>${wk}h sem</small></div></div><div class="cells">`;
+    for(let k=0;k<n;k++){
+      const mn=t0+k*30, band=(mn<d.open)||(mn>=d.close); const he=(mn+30)%60===0?'hourend':'';
+      let cls='cell '+he+(band?' band':'');
+      if(sh&&sh.vac){const s=(k===0),e2=(k===n-1);
+        html+=`<div class="${cls} w vac ${s?'s':''} ${e2?'e':''}" style="--dc:${c}"><div class="fill"></div>${k===Math.max(2,Math.floor(n/2)-3)?'<span class="entlabel dark">Vacaciones</span>':''}</div>`;
+      } else if(sh){const a=(sh.start-t0)/30, b=a+len;
+        if(k>=a&&k<b){const s=(k===a),e2=(k===b-1); cov[k]++;
+          html+=`<div class="${cls} w ${sh.comp?'comp':''} ${s?'s':''} ${e2?'e':''}" style="--dc:${c}"><div class="fill"></div>${s?`<span class="entlabel">${hh(sh.start)}</span>`:''}</div>`;
+        } else html+=`<div class="${cls}"></div>`;
+      } else html+=`<div class="${cls}"></div>`;
+    }
+    html+=`</div></div>`;
+  });
+  html+=`<div class="crow"><div class="gmeta"><div class="c-obs"></div><div class="c-name">CANT. PERSONAS</div><div class="c-base"></div><div class="c-ent" style="font-size:9px;color:var(--ink-3)">obj→</div><div class="c-tot"></div></div><div class="cells">`;
+  for(let k=0;k<n;k++){
+    const mn=t0+k*30, hr=Math.floor(mn/60)%24; const open=mn>=d.open&&mn<d.close;
+    const tgt=open?Math.max(1,Math.round(peakN*(SHAPE[hr]||.5))):0; const v=cov[k]; const he=(mn+30)%60===0?'hourend':'';
+    let bg='transparent',col='var(--ink-3)';
+    if(open){const r=v/Math.max(tgt,1); bg=v===0?'#fdecec':r<.8?'#fdf0d6':'#e7f4ee'; col=v===0?'var(--bad)':r<.8?'var(--gold-deep)':'var(--ok)';}
+    html+=`<div class="ccell ${he}" style="background:${bg};color:${col}">${open?v:''}</div>`;
+  }
+  html+=`</div></div>`;
+  return html;
+}
+function renderGrid(){
+  const dept=DEPTS.find(d=>d.id===curDept);
+  document.documentElement.style.setProperty('--garnet',dept.c);
+  document.getElementById('lg-normal').style.background=dept.c;
+  const d=DAYS[curDay];
+  document.getElementById('daylabel').textContent=d.n+(d.match?' · Partido':d.inv?' · Inventario':'');
+  document.getElementById('gwrap').innerHTML=buildDayBlock(curDay);
+}
+function renderWeek(){
+  const dept=DEPTS.find(d=>d.id===curDept);
+  document.documentElement.style.setProperty('--garnet',dept.c);
+  document.getElementById('lg-normal').style.background=dept.c;
+  let h='';
+  DAYS.forEach((d,di)=>{
+    const tag=d.match?`<span class="dbtag match">Partido · cierra ${hh(d.close)}</span>`
+      :d.inv?`<span class="dbtag inv">Inventario · cierra ${hh(d.close)}</span>`:'';
+    h+=`<div class="dayblock"><h5>${d.n} ${d.d} jul ${tag}</h5><div class="gscroll">${buildDayBlock(di)}</div></div>`;
+  });
+  document.getElementById('weekwrap').innerHTML=h;
+}
+
+function renderTeam(){
+  const team=TEAM[curDept]; const c=DEPTS.find(d=>d.id===curDept).c;
+  let h=`<thead><tr><th>Persona</th><th>Departamento</th><th>Contrato</th><th>Disponibilidad</th><th>Horario fijo</th><th>Vacaciones</th><th></th></tr></thead><tbody>`;
+  team.forEach(e=>{const [nm,dni,base,av,fixed,vac]=e; const dn=DEPTS.find(d=>d.id===curDept).n;
+    h+=`<tr>
+      <td><div class="te-name"><div class="avmini" style="background:${c}">${init2(nm)}</div><div><b>${nm}</b><br><span>${dni}</span></div></div></td>
+      <td><select class="sel"><option>${dn}</option><option>Performance</option><option>Cajas</option></select></td>
+      <td class="basecell"><select class="sel"><option ${base===40?'selected':''}>40 h</option><option ${base===35?'selected':''}>35 h</option><option ${base===25?'selected':''}>25 h</option><option ${base===20?'selected':''}>20 h</option></select> <small>${base/5}h/día</small></td>
+      <td><select class="sel"><option ${av==='M'?'selected':''}>Mañana</option><option ${av==='T'?'selected':''}>Tarde</option><option ${av==='F'?'selected':''}>Completa</option></select></td>
+      <td><div class="tg ${fixed?'on':''}"></div></td>
+      <td><span class="vacbadge ${vac?'':'none'}">${vac?vac+' días':'—'}</span></td>
+      <td><button class="editbtn"><svg class="ico" viewBox="0 0 24 24" style="width:15px;height:15px"><path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17v3Z"/></svg></button></td>
+    </tr>`;
+  });
+  h+=`</tbody>`; document.getElementById('teamtbl').innerHTML=h;
+}
+
+const PROFILES={
+  normal:{8:3,9:5,10:11,11:13,12:12,13:9,14:7,15:7,16:9,17:11,18:11,19:9,20:5,21:3},
+  partido:{8:2,9:3,10:6,11:7,12:7,13:6,14:6,15:7,16:8,17:9,18:9,19:10,20:11,21:14,22:14,23:9}
+};
+function renderParams(){
+  const rows=DAYS.map(d=>{const tag=d.match?'⚽':d.inv?'🗳':''; return `<tr>
+    <td class="daytag ${d.match||d.inv?'match':''}">${d.n} ${tag}</td>
+    <td><input class="timeinput" value="${hh(d.open)}"></td>
+    <td><input class="timeinput" value="${hh(d.close)}"></td>
+    <td><div class="tg ${d.match?'on':''}"></div></td></tr>`;}).join('');
+  document.getElementById('hourstbl').innerHTML=rows;
+  const eur=[14,15,16,16,22,38,19];
+  document.getElementById('billdays').innerHTML=DAYS.map((d,i)=>`<div class="bd ${d.match?'match':''}"><label>${d.k}</label><div class="eur"><input value="${eur[i]}"><span>k€</span></div></div>`).join('');
+  renderPct(); drawChart();
+  document.querySelectorAll('.tg').forEach(t=>t.onclick=()=>t.classList.toggle('on'));
+}
+function setProfile(p){billProfile=p;
+  document.getElementById('pf-normal').classList.toggle('active',p==='normal');
+  document.getElementById('pf-partido').classList.toggle('active',p==='partido');
+  renderPct(); drawChart();}
+function renderPct(){
+  const prof=PROFILES[billProfile]; const hrs=Object.keys(prof).map(Number).sort((a,b)=>a-b);
+  document.getElementById('pctgrid').innerHTML=hrs.map(hr=>`<div class="pctchip"><span>${hr}h</span><input type="number" data-hr="${hr}" value="${prof[hr]}"><i>%</i></div>`).join('');
+  document.querySelectorAll('#pctgrid input').forEach(inp=>inp.oninput=()=>{PROFILES[billProfile][+inp.dataset.hr]=+inp.value||0;sumPct();drawChart();});
+  sumPct();
+}
+function sumPct(){const s=Object.values(PROFILES[billProfile]).reduce((a,b)=>a+b,0);
+  const el=document.getElementById('pctsum'); el.textContent='Σ '+s+'%';
+  el.style.color=Math.abs(s-100)<=2?'var(--ok)':'var(--bad)';}
+function drawChart(){
+  const prof=PROFILES[billProfile]; const prod=+document.getElementById('prod').value||220;
+  const dailyEur=billProfile==='partido'?38000:16000;
+  const hrs=Object.keys(prof).map(Number).sort((a,b)=>a-b);
+  const maxP=Math.max(...Object.values(prof),1); let peak=0;
+  const cols=hrs.map(hr=>{const eurHr=dailyEur*prof[hr]/100; const heads=Math.max(1,Math.round(eurHr/prod/2)); peak=Math.max(peak,heads); return{hr,p:prof[hr],heads,eurHr};});
+  document.getElementById('chart').innerHTML=cols.map(o=>`<div class="col" title="${o.hr}h · ${Math.round(o.eurHr)}€ · ${o.heads} pers."><div class="heads" style="bottom:calc(${o.heads/Math.max(peak,1)*100}% + 18px)"></div><div class="rev" style="height:${o.p/maxP*100}%"></div><div class="hl">${o.hr}h</div></div>`).join('');
+  document.getElementById('peakheads').textContent=peak;
+}
+function fakeImport(){
+  const eur=[12,13,14,15,21,37,18, 14,15,16,16,22,38,19, 13,14,15,15,23,39,17, 14,16,15,16,24,40,20, 15,16,17];
+  let i=0; document.querySelectorAll('#billdays .eur input').forEach(inp=>inp.value=eur[i++]||inp.value);
+  showToast('<b>Julio 2026 importado</b> · 31 días de facturación desde Excel · 5 semanas');
+}
+function showToast(msg){const t=document.getElementById('toast');document.getElementById('toastmsg').innerHTML=msg;t.classList.add('show');clearTimeout(window._tt);window._tt=setTimeout(()=>t.classList.remove('show'),3400);}
+
+function chrome(){
+  document.getElementById('depts').innerHTML=DEPTS.map(d=>`<div class="dept ${d.id===curDept?'active':''}" data-d="${d.id}"><span class="dot" style="background:${d.c}"></span>${d.n}<span class="ct">${TEAM[d.id].length}</span></div>`).join('');
+  document.getElementById('days').innerHTML=DAYS.map((d,i)=>`<div class="day ${i===curDay?'active':''}" data-day="${i}">${d.k[0]+d.k.slice(1).toLowerCase()} <small>${d.d}</small>${d.match?'<span class="matchbadge">Partido</span>':d.inv?'<span class="matchbadge" style="background:#e7e0fb;color:#5b32b0">Invent.</span>':''}</div>`).join('');
+  const dept=DEPTS.find(d=>d.id===curDept);
+  document.getElementById('dchip').style.background=dept.c; document.getElementById('dchip').textContent=dept.n[0];
+  document.getElementById('dname').textContent=dept.n;
+  const team=TEAM[curDept]; document.getElementById('dsub').textContent=`${team.length} personas · ${team.reduce((a,e)=>a+e[2],0)} h / semana`;
+  document.querySelectorAll('.dept').forEach(el=>el.onclick=()=>{curDept=el.dataset.d;chrome();renderAll();if(gridMode==='semana')renderWeek()});
+  document.querySelectorAll('.day').forEach(el=>el.onclick=()=>{curDay=+el.dataset.day;chrome();renderGrid()});
+}
+function setGridMode(m){gridMode=m;
+  document.getElementById('gt-dia').classList.toggle('active',m==='dia');
+  document.getElementById('gt-sem').classList.toggle('active',m==='semana');
+  document.getElementById('days').style.display=m==='dia'?'':'none';
+  document.getElementById('daycard').style.display=m==='dia'?'':'none';
+  document.getElementById('weekwrap').style.display=m==='semana'?'block':'none';
+  if(m==='semana')renderWeek(); else renderGrid();
+}
+function printWeek(){setGridMode('semana');setTimeout(()=>window.print(),250);}
+function renderAll(){renderGrid();renderTeam();renderParams();}
+function setView(v){curView=v;
+  ['grid','team','params'].forEach(x=>{document.getElementById('view-'+x).classList.toggle('show',x===v);
+    document.getElementById('vt-'+x)?.classList.toggle('active',x===v);
+    document.getElementById('nv-'+x)?.classList.toggle('on',x===v);});
+}
+chrome();renderAll();
+document.getElementById('prod').addEventListener('input',drawChart);
+document.getElementById('gen').onclick=function(){gridMode==='semana'?renderWeek():renderGrid();};
+</script>
+</body>
+</html>
