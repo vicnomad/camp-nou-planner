@@ -1,8 +1,8 @@
 {
   "functions": {
-    "api/solve.py": {
-      "maxDuration": 60,
-      "memory": 1024
+    "api/*.py": {
+      "runtime": "@vercel/python@4.5.1",
+      "maxDuration": 60
     }
   }
 }
