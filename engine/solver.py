@@ -227,6 +227,52 @@ def solve(data):
             mdl.add(sum(ww) <= ei["td"])
             # SOFT penalty for working fewer is added in the objective section
 
+    # ── convention rules (HARD) ────────────────────────────────────
+    min_rest = P.get("min_rest_hours", 0) * 60   # 0 = disabled by default
+    max_consec = P.get("max_consecutive_days", 7)  # 7 = disabled by default
+    prev_sched = data.get("prev_week_schedule", {})  # {empId: {DAY: worked_bool}}
+
+    for i, ei in enumerate(EI):
+        # (a) Minimum rest between consecutive days
+        if min_rest > 0:
+            for di in range(len(DAYS) - 1):
+                d1, d2 = DAYS[di], DAYS[di + 1]
+                if DC[d1] is None or DC[d2] is None:
+                    continue
+                for s1, bv1 in X[i][d1].items():
+                    end1_m = DC[d1]["base"] + s1 * 30 + ei["L"] * 30
+                    for s2, bv2 in X[i][d2].items():
+                        start2_m = DC[d2]["base"] + s2 * 30
+                        if start2_m - end1_m < min_rest:
+                            mdl.add_bool_or([bv1.Not(), bv2.Not()])
+
+        # (b) Max consecutive days (within week)
+        if max_consec < 7:
+            window_len = max_consec + 1
+            for start_idx in range(len(DAYS) - window_len + 1):
+                window = DAYS[start_idx:start_idx + window_len]
+                ww_win = [W[i][d] for d in window if W[i][d] is not None]
+                if len(ww_win) > max_consec:
+                    mdl.add(sum(ww_win) <= max_consec)
+
+            # Cross-week: use prev_week_schedule
+            emp_prev = prev_sched.get(ei["id"], {})
+            # Count trailing consecutive worked days at end of prev week
+            trailing = 0
+            for d in reversed(DAYS):
+                if emp_prev.get(d):
+                    trailing += 1
+                else:
+                    break
+            if trailing > 0:
+                # First (max_consec + 1 - trailing) days of this week: sum <= max_consec - trailing
+                cap = max_consec - trailing
+                first_n = max_consec + 1 - trailing
+                first_days = DAYS[:first_n]
+                ww_first = [W[i][d] for d in first_days if W[i][d] is not None]
+                if cap >= 0 and ww_first:
+                    mdl.add(sum(ww_first) <= max(cap, 0))
+
     # ── coverage IntVars ────────────────────────────────────────────
     COV = {}
     for d in open_days:

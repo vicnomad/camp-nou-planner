@@ -313,6 +313,36 @@ export default function ParamsView({ department, onUpdateParams }: Props) {
             </table>
           </div>
         </div>
+
+        {/* Convention rules */}
+        <div className="card">
+          <div className="cardpad psec">
+            <h4>
+              <svg className="ico" viewBox="0 0 24 24" style={{stroke:"var(--violet)",width:16,height:16}}>
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              </svg> Reglas de convenio
+            </h4>
+            <p className="desc">Restricciones laborales aplicadas al generar (nivel tienda).</p>
+            <div style={{display:"flex",gap:14,flexWrap:"wrap"}}>
+              <div className="field" style={{flex:1,minWidth:140}}>
+                <label>Descanso mínimo entre turnos</label>
+                <div style={{display:"flex",alignItems:"center",gap:4}}>
+                  <input className="num" type="number" style={{width:50}} value={params.min_rest_hours ?? 12}
+                    onChange={e=>update(p=>({...p,min_rest_hours:+e.target.value||12}))}/>
+                  <span style={{fontSize:11,color:"var(--ink-3)"}}>horas</span>
+                </div>
+              </div>
+              <div className="field" style={{flex:1,minWidth:140}}>
+                <label>Máx. días seguidos</label>
+                <div style={{display:"flex",alignItems:"center",gap:4}}>
+                  <input className="num" type="number" style={{width:50}} value={params.max_consecutive_days ?? 5}
+                    onChange={e=>update(p=>({...p,max_consecutive_days:+e.target.value||5}))}/>
+                  <span style={{fontSize:11,color:"var(--ink-3)"}}>días</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* RIGHT COLUMN — DEMAND MODEL */}
@@ -335,8 +365,8 @@ export default function ParamsView({ department, onUpdateParams }: Props) {
             ))}
           </div>
 
-          {/* ── FACTURACIÓN mode ── */}
-          {demandMode === "billing" && (<>
+          {/* ── BILLING + CAJAS: shared store-level fields ── */}
+          {(demandMode === "billing" || demandMode === "cajas") && (<>
             <div className="field">
               <label>Facturación diaria de TIENDA <span className="hint">Venta real del día en € (ej. 9.000) — compartida</span></label>
               <div className="import" onClick={()=>fileRef.current?.click()}>
@@ -355,6 +385,23 @@ export default function ParamsView({ department, onUpdateParams }: Props) {
               {Object.values(params.billing?.daily??{}).some(v=>(v as number)>1000000)&&(
                 <div style={{fontSize:11,color:"var(--bad)",marginTop:6,fontWeight:500}}>⚠ Algún valor supera 1M€/día</div>)}
             </div>
+
+            {/* Curva horaria — ALWAYS visible for billing & cajas */}
+            <div className="field">
+              <label>Curva horaria <span className="hint">(% de venta por franja — nivel tienda, compartida)</span></label>
+              <div className="profiles">
+                <button className={`prof ${profile==="normal"?"active":""}`} onClick={()=>setProfile("normal")}>Normal</button>
+                <button className={`prof ${profile==="match"?"active":""}`} onClick={()=>setProfile("match")}>Partido ⚽</button>
+                <span className="pctsum" style={{color:Math.abs(pctSum-100)<=2?"var(--ok)":"var(--bad)"}}>Σ {pctSum}%</span>
+              </div>
+              <div className="pctgrid">{profileHours.map(hr=>(<div key={hr} className="pctchip"><span>{hr}h</span><input type="number" value={currentProfile[String(hr)]??0} onChange={e=>setProfilePct(String(hr),+e.target.value||0)}/><i>%</i></div>))}</div>
+              <div className="chartbox"><div className="chart">{profileHours.map(hr=>{const pct=currentProfile[String(hr)]??0;return <div key={hr} className="col"><div className="rev" style={{height:`${(pct/maxPct)*100}%`}}/><div className="hl">{hr}h</div></div>;})}</div><div className="chleg"><span><span className="s1"/> Venta</span><span><span className="s2"/> Personas</span></div></div>
+              <div style={{fontSize:10,color:"var(--ink-3)",marginTop:6}}>El 0% en una hora = sin venta → demanda ~0 en esa franja. Admite decimales. Mantén el total ~100%.</div>
+            </div>
+          </>)}
+
+          {/* ── FACTURACIÓN-specific ── */}
+          {demandMode === "billing" && (
             <div style={{display:"flex",gap:12,marginBottom:14}}>
               <div className="field" style={{flex:1}}>
                 <label>% facturación de este dpto <span className="hint">(del total tienda)</span></label>
@@ -373,20 +420,10 @@ export default function ParamsView({ department, onUpdateParams }: Props) {
                 </div>
               </div>
             </div>
-            <div className="field">
-              <label>Perfil horario <span className="hint">(% por franja — compartido tienda)</span></label>
-              <div className="profiles"><button className={`prof ${profile==="normal"?"active":""}`} onClick={()=>setProfile("normal")}>Normal</button><button className={`prof ${profile==="match"?"active":""}`} onClick={()=>setProfile("match")}>Partido ⚽</button><span className="pctsum" style={{color:Math.abs(pctSum-100)<=2?"var(--ok)":"var(--bad)"}}>Σ {pctSum}%</span></div>
-              <div className="pctgrid">{profileHours.map(hr=>(<div key={hr} className="pctchip"><span>{hr}h</span><input type="number" value={currentProfile[String(hr)]??0} onChange={e=>setProfilePct(String(hr),+e.target.value||0)}/><i>%</i></div>))}</div>
-              <div className="chartbox"><div className="chart">{profileHours.map(hr=>{const pct=currentProfile[String(hr)]??0;return <div key={hr} className="col"><div className="rev" style={{height:`${(pct/maxPct)*100}%`}}/><div className="hl">{hr}h</div></div>;})}</div><div className="chleg"><span><span className="s1"/> Venta</span><span><span className="s2"/> Personas</span></div></div>
-            </div>
-          </>)}
+          )}
 
-          {/* ── CAJAS mode ── */}
-          {demandMode === "cajas" && (<>
-            <div className="note" style={{marginTop:0,marginBottom:14}}>
-              <svg className="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v.5M12 11v5"/></svg>
-              <div>Cajas = facturación tienda ÷ ticket medio = clientes/hora → ÷ clientes por caja = cajas necesarias.</div>
-            </div>
+          {/* ── CAJAS-specific ── */}
+          {demandMode === "cajas" && (
             <div style={{display:"flex",gap:12,marginBottom:14}}>
               <div className="field" style={{flex:1}}>
                 <label>Ticket medio <span className="hint">(€/cliente)</span></label>
@@ -399,12 +436,7 @@ export default function ParamsView({ department, onUpdateParams }: Props) {
                   onChange={e=>update(p=>({...p,clients_per_cash_hour:+e.target.value||15}))}/>
               </div>
             </div>
-            <div className="field">
-              <label>Facturación diaria de TIENDA <span className="hint">(€/día — compartida)</span></label>
-              <div className="bill-days">{DAYS_KEYS.map(d=>{const val=params.billing?.daily?.[d]??0;return(
-                <div key={d} className="bd"><label>{d}</label><div className="eur"><input value={val||""} onChange={e=>setBillingDaily(d,+e.target.value||0)} type="number" placeholder="0"/><span>€</span></div></div>);})}</div>
-            </div>
-          </>)}
+          )}
 
           {/* ── COBERTURA mode ── */}
           {demandMode === "cobertura" && (<>

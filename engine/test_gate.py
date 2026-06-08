@@ -17,6 +17,7 @@ BASE = {
     "days_per_week": 5,
     "preopen": {"minutes": 30, "min": 2, "max": 3},
     "postclose": {"minutes": 30, "min": 2, "max": 3},
+    "min_rest_hours": 0, "max_consecutive_days": 7,  # disabled for legacy tests
     "store_hours": {
         "MON": {"open":"08:00","close":"21:00"},
         "TUE": {"open":"08:00","close":"21:00"},
@@ -245,6 +246,61 @@ if open_targets:
     check(f"peak target ({max(open_targets)}) > valley ({min(open_targets)})",
           max(open_targets) > min(open_targets),
           f"all same: {open_targets[:5]}")
+
+# ── (i) 12h rest: late close prevents early start next day ────────
+print("\n(i) Descanso 12h entre turnos")
+p9 = json.loads(json.dumps(BASE))
+# THU closes at 01:00 (inventory), FRI opens 08:00 with 1h montaje → 07:00
+p9["store_hours"]["THU"] = {"open":"08:00","close":"21:00","special":"inventory",
+                            "extra":{"from":"21:00","to":"01:00","min":1,"max":2}}
+p9["min_rest_hours"] = 12
+r9 = solve({
+    "department": {"id":"t","name":"Test"},
+    "params": p9,
+    "employees": [
+        {"id":"R1","name":"Test, Rest","weekly_hours":25,"availability":"T"},
+        {"id":"R2","name":"Filler, A","weekly_hours":25,"availability":"M"},
+        {"id":"R3","name":"Filler, B","weekly_hours":25,"availability":"F"},
+    ],
+})
+check("status OK", r9["status"] in ("OPTIMAL","FEASIBLE"), r9["status"])
+# R1 is T availability: if works THU late (e.g. ends 01:00), FRI can't start before 13:00
+r1_thu = r9["schedule"].get("R1",{}).get("THU",{})
+r1_fri = r9["schedule"].get("R1",{}).get("FRI",{})
+if r1_thu.get("end") and r1_fri.get("start"):
+    from solver import _tm as TM
+    end_thu = TM(r1_thu["end"])
+    if end_thu < 420: end_thu += 1440  # past midnight
+    start_fri = TM(r1_fri["start"])
+    gap = start_fri - end_thu
+    if gap < 0: gap += 1440
+    check(f"R1 rest gap {gap}min >= 720min (12h)", gap >= 720, f"gap={gap}")
+else:
+    check("R1 rest (one day off, constraint trivially met)", True)
+
+# ── (j) Max 5 consecutive: prev week trailing ────────────────────
+print("\n(j) Máx 5 días seguidos (con semana anterior)")
+p10 = json.loads(json.dumps(BASE))
+p10["max_consecutive_days"] = 5
+# Employee worked WED-SUN of previous week (5 consecutive)
+r10 = solve({
+    "department": {"id":"t","name":"Test"},
+    "params": p10,
+    "prev_week_schedule": {
+        "C1": {"MON": False, "TUE": False, "WED": True, "THU": True,
+               "FRI": True, "SAT": True, "SUN": True},
+    },
+    "employees": [
+        {"id":"C1","name":"Test, Consec","weekly_hours":25,"availability":"F"},
+        {"id":"C2","name":"Filler, X","weekly_hours":25,"availability":"M"},
+        {"id":"C3","name":"Filler, Y","weekly_hours":25,"availability":"T"},
+    ],
+})
+check("status OK", r10["status"] in ("OPTIMAL","FEASIBLE"), r10["status"])
+# C1 had 5 trailing days (WED-SUN), so MON must be off
+c1_mon = r10["schedule"].get("C1",{}).get("MON",{})
+check("C1 MON is off (5 trailing from prev week)", c1_mon.get("code") == "off",
+      f"got {c1_mon.get('code')}")
 
 # ── summary ────────────────────────────────────────────────────────
 print(f"\n{'='*50}")

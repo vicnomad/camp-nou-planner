@@ -37,6 +37,9 @@ export interface DepartmentParams {
   ticket_medio?: number;          // €/client (Cajas mode)
   clients_per_cash_hour?: number; // clients one cash register handles/hour
   coverage_bands?: CoverageBand[];// explicit min/max bands (Cobertura mode)
+  // Convention rules
+  min_rest_hours?: number;          // minimum rest between shifts (default 12)
+  max_consecutive_days?: number;    // max consecutive working days (default 5)
 }
 
 export interface Department {
