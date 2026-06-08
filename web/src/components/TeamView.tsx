@@ -3,14 +3,19 @@
 import { useState, useMemo } from "react";
 import { db } from "@/lib/firebase";
 import { doc, setDoc, deleteDoc } from "firebase/firestore";
-import type { Department, Employee, Absence, AbsenceType } from "@/lib/types";
+import type { Department, Employee, Absence } from "@/lib/types";
 import { DAYS_KEYS, DAY_SHORT, DEFAULT_ABSENCE_TYPES } from "@/lib/types";
+import { weekIsoId, isoWeekNumber } from "@/lib/week";
+import type { WeekOverride } from "@/app/page";
 
 interface Props {
   department: Department;
   employees: Employee[];
   departments: Department[];
   showToast: (msg: string) => void;
+  weekMonday: string;
+  weekOverrides: Record<string, WeekOverride>;
+  onOverridesChange: (o: Record<string, WeekOverride>) => void;
 }
 
 const HOURS_OPTIONS = [20, 25, 35, 40];
@@ -37,11 +42,19 @@ interface ModalState {
 }
 
 export default function TeamView({
-  department,
-  employees,
-  departments,
-  showToast,
+  department, employees, departments, showToast,
+  weekMonday, weekOverrides, onOverridesChange,
 }: Props) {
+  const weekDocId = `${department.id}_${weekIsoId(weekMonday)}`;
+  const weekNum = isoWeekNumber(weekMonday);
+
+  async function saveOverride(empId: string, ov: WeekOverride | null) {
+    const next = { ...weekOverrides };
+    if (ov && Object.keys(ov).length > 0) next[empId] = ov;
+    else delete next[empId];
+    onOverridesChange(next);
+    await setDoc(doc(db, "weekOverrides", weekDocId), next);
+  }
   const [search, setSearch] = useState("");
   const [modal, setModal] = useState<ModalState>({
     open: false,
@@ -150,8 +163,11 @@ export default function TeamView({
               {filtered.map((emp) => {
                 const hpd = emp.weekly_hours / (department.params?.days_per_week ?? 5);
                 const vac = vacDaysCount(emp.absences ?? []);
+                const ov = weekOverrides[emp.id];
+                const hasOv = !!ov;
+                const isInactive = ov?.active === false;
                 return (
-                  <tr key={emp.id}>
+                  <tr key={emp.id} style={isInactive ? { opacity: 0.4 } : {}}>
                     <td>
                       <div className="te-name">
                         <div
@@ -186,18 +202,11 @@ export default function TeamView({
                         {vac ? `${vac} días` : "—"}
                       </span>
                     </td>
-                    <td>
-                      <button
-                        className="editbtn"
-                        onClick={() => openEdit(emp)}
-                      >
-                        <svg
-                          className="ico"
-                          viewBox="0 0 24 24"
-                          style={{ width: 15, height: 15 }}
-                        >
-                          <path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17v3Z" />
-                        </svg>
+                    <td style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                      {hasOv && <span style={{ width: 7, height: 7, borderRadius: 4, background: "#d4940a", flexShrink: 0 }} title={`Override S${weekNum}`} />}
+                      {hasOv && <button onClick={() => saveOverride(emp.id, null)} style={{ border: "none", background: "none", cursor: "pointer", fontSize: 10, color: "var(--ink-3)" }} title="Volver al base">↺</button>}
+                      <button className="editbtn" onClick={() => openEdit(emp)}>
+                        <svg className="ico" viewBox="0 0 24 24" style={{ width: 15, height: 15 }}><path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17v3Z" /></svg>
                       </button>
                     </td>
                   </tr>
@@ -230,9 +239,10 @@ export default function TeamView({
           onChange={(e) => setModal((m) => ({ ...m, employee: e }))}
           onSave={handleSave}
           onDelete={handleDelete}
-          onClose={() =>
-            setModal({ open: false, employee: null, isNew: false })
-          }
+          onClose={() => setModal({ open: false, employee: null, isNew: false })}
+          weekNum={weekNum}
+          weekOverride={modal.employee?.id ? weekOverrides[modal.employee.id] : undefined}
+          onSaveOverride={(ov) => { if (modal.employee?.id) saveOverride(modal.employee.id, ov); }}
         />
       )}
     </>
@@ -242,24 +252,15 @@ export default function TeamView({
 /* ---------- Employee Modal ---------- */
 
 function EmployeeModal({
-  employee,
-  isNew,
-  departments,
-  deptParams,
-  onChange,
-  onSave,
-  onDelete,
-  onClose,
+  employee, isNew, departments, deptParams, onChange, onSave, onDelete, onClose,
+  weekNum, weekOverride, onSaveOverride,
 }: {
-  employee: Partial<Employee>;
-  isNew: boolean;
-  departments: Department[];
-  deptParams: Department["params"];
-  onChange: (e: Partial<Employee>) => void;
-  onSave: () => void;
-  onDelete: () => void;
-  onClose: () => void;
+  employee: Partial<Employee>; isNew: boolean; departments: Department[];
+  deptParams: Department["params"]; onChange: (e: Partial<Employee>) => void;
+  onSave: () => void; onDelete: () => void; onClose: () => void;
+  weekNum: number; weekOverride?: WeekOverride; onSaveOverride: (ov: WeekOverride | null) => void;
 }) {
+  const [ov, setOv] = useState<WeekOverride>(weekOverride ?? {});
   const [absenceType, setAbsenceType] = useState("VCN");
   const hasFixed = !!employee.fixed;
   const absences = employee.absences ?? [];
@@ -486,6 +487,44 @@ function EmployeeModal({
             </div>
           </div>
         </div>
+        {/* WEEK OVERRIDE section */}
+        {!isNew && (
+          <div style={{ padding: "0 22px 14px", borderTop: "1px solid var(--line)", marginTop: 4, paddingTop: 14 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--ink)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+              Esta semana · Semana {weekNum}
+              {Object.keys(ov).length > 0 && <span style={{ width: 7, height: 7, borderRadius: 4, background: "#d4940a" }} />}
+            </div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 12 }}>
+              <div className="form-field" style={{ flex: 1, minWidth: 120, marginBottom: 8 }}>
+                <label>Horas (vacío = base)</label>
+                <input className="form-input" type="number" placeholder={String(employee.weekly_hours ?? 25)}
+                  value={ov.weekly_hours ?? ""} onChange={e => setOv({ ...ov, weekly_hours: e.target.value ? +e.target.value : undefined })} />
+              </div>
+              <div className="form-field" style={{ flex: 1, minWidth: 120, marginBottom: 8 }}>
+                <label>Disponibilidad</label>
+                <select className="sel" style={{ width: "100%" }} value={ov.availability ?? ""}
+                  onChange={e => setOv({ ...ov, availability: (e.target.value || undefined) as WeekOverride["availability"] })}>
+                  <option value="">= Base ({employee.availability})</option>
+                  <option value="M">Mañana</option><option value="T">Tarde</option><option value="F">Completa</option>
+                </select>
+              </div>
+              <div className="form-field" style={{ flex: 1, minWidth: 120, marginBottom: 8 }}>
+                <label>Activo esta semana</label>
+                <div className={`tg ${ov.active !== false ? "on" : ""}`} onClick={() => setOv({ ...ov, active: ov.active === false ? undefined : false })} />
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => { onSaveOverride(Object.keys(ov).length > 0 ? ov : null); }}>
+                Guardar override S{weekNum}
+              </button>
+              {Object.keys(ov).length > 0 && (
+                <button style={{ border: "none", background: "none", cursor: "pointer", fontSize: 11, color: "var(--ink-3)" }}
+                  onClick={() => { setOv({}); onSaveOverride(null); }}>↺ Volver al base</button>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="modal-foot">
           {!isNew && (
             <button className="btn-danger" onClick={onDelete}>
@@ -497,7 +536,7 @@ function EmployeeModal({
             Cancelar
           </button>
           <button className="btn btn-go" onClick={onSave}>
-            {isNew ? "Añadir" : "Guardar"}
+            {isNew ? "Añadir" : "Guardar base"}
           </button>
         </div>
       </div>

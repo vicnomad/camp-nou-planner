@@ -3,10 +3,11 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { db } from "@/lib/firebase";
 import {
-  collection, onSnapshot, query, where, doc, updateDoc,
+  collection, onSnapshot, query, where, doc, updateDoc, getDoc,
 } from "firebase/firestore";
 import type { Department, Employee, SolveResult } from "@/lib/types";
 import { DAYS_KEYS, DAY_LABELS } from "@/lib/types";
+import { getMonday, fmtDate, weekIsoId } from "@/lib/week";
 import Sidebar from "@/components/Sidebar";
 import TeamView from "@/components/TeamView";
 import ParamsView from "@/components/ParamsView";
@@ -14,17 +15,26 @@ import GridView from "@/components/GridView";
 
 export type ViewId = "grid" | "team" | "params";
 
-function exportCegidCSV(schedule: SolveResult, employees: Employee[]) {
-  const rows = ["Nombre;DNI;Día;Entrada;Salida;Horas;Código"];
+export interface WeekOverride {
+  weekly_hours?: number;
+  availability?: "M" | "T" | "F";
+  fixed?: Record<string, string> | null;
+  active?: boolean;
+}
+
+function exportCegidCSV(schedule: SolveResult, employees: Employee[], dpw: number) {
+  const rows = ["Nombre;DNI;Día;Entrada;Salida;Horas;HorasCompl;Código"];
   for (const emp of employees) {
+    const hpd = emp.weekly_hours / dpw;
     const empSched = schedule.schedule?.[emp.id];
     if (!empSched) continue;
     for (const d of DAYS_KEYS) {
       const entry = empSched[d];
       if (!entry) continue;
-      const code = entry.code === "normal" ? "NOR" : entry.code === "vacation" ? "VCN" : entry.code.toUpperCase();
+      const code = entry.code === "normal" ? "NOR" : entry.code === "off" ? "OFF" : entry.code.toUpperCase();
+      const compl = entry.code === "normal" && entry.hours ? Math.max(0, entry.hours - hpd) : 0;
       rows.push(
-        `${emp.name};${emp.dni};${DAY_LABELS[d]};${entry.start ?? ""};${entry.end ?? ""};${entry.hours ?? 0};${code}`
+        `${emp.name};${emp.dni};${DAY_LABELS[d]};${entry.start ?? ""};${entry.end ?? ""};${entry.hours ?? 0};${compl};${code}`
       );
     }
   }
@@ -45,6 +55,8 @@ export default function Home() {
   const [schedule, setSchedule] = useState<SolveResult | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
+  const [weekMonday, setWeekMonday] = useState(() => fmtDate(getMonday(new Date())));
+  const [weekOverrides, setWeekOverrides] = useState<Record<string, WeekOverride>>({});
   const generateRef = useRef<(() => void) | null>(null);
 
   const currentDept = departments.find((d) => d.id === currentDeptId) ?? null;
@@ -54,16 +66,12 @@ export default function Home() {
     setTimeout(() => setToast(null), 3400);
   }, []);
 
-  // Persist sidebar state
   useEffect(() => {
     const saved = localStorage.getItem("sidebar_collapsed");
     if (saved === "true") setCollapsed(true);
   }, []);
   const toggleSidebar = useCallback(() => {
-    setCollapsed((c) => {
-      localStorage.setItem("sidebar_collapsed", String(!c));
-      return !c;
-    });
+    setCollapsed((c) => { localStorage.setItem("sidebar_collapsed", String(!c)); return !c; });
   }, []);
 
   // Load departments
@@ -77,7 +85,7 @@ export default function Home() {
     return unsub;
   }, [currentDeptId]);
 
-  // Load employees for current department
+  // Load employees
   useEffect(() => {
     if (!currentDeptId) return;
     const q = query(collection(db, "employees"), where("department", "==", currentDeptId));
@@ -89,7 +97,40 @@ export default function Home() {
     return unsub;
   }, [currentDeptId]);
 
-  useEffect(() => { setSchedule(null); }, [currentDeptId]);
+  // Load saved schedule + overrides when dept or week changes
+  const weekDocId = currentDeptId ? `${currentDeptId}_${weekIsoId(weekMonday)}` : null;
+  useEffect(() => {
+    setSchedule(null); // blank until loaded
+    setWeekOverrides({});
+    if (!weekDocId) return;
+    // Load saved schedule
+    getDoc(doc(db, "schedules", weekDocId)).then((snap) => {
+      if (snap.exists()) {
+        const d = snap.data();
+        setSchedule({ status: d.status, objective: d.objective, schedule: d.schedule, coverage: d.coverage, warnings: d.warnings ?? [] });
+      }
+    });
+    // Load week overrides
+    getDoc(doc(db, "weekOverrides", weekDocId)).then((snap) => {
+      if (snap.exists()) setWeekOverrides(snap.data() as Record<string, WeekOverride>);
+    });
+  }, [weekDocId]);
+
+  // Compute effective employees (base + week overrides)
+  const effectiveEmployees = employees.map((emp) => {
+    const ov = weekOverrides[emp.id];
+    if (!ov) return emp;
+    return {
+      ...emp,
+      ...(ov.weekly_hours !== undefined ? { weekly_hours: ov.weekly_hours } : {}),
+      ...(ov.availability !== undefined ? { availability: ov.availability } : {}),
+      ...(ov.fixed !== undefined ? { fixed: ov.fixed } : {}),
+    };
+  });
+  const activeEmployees = effectiveEmployees.filter((emp) => {
+    const ov = weekOverrides[emp.id];
+    return ov?.active !== false;
+  });
 
   const updateParams = useCallback(async (params: Department["params"]) => {
     if (!currentDeptId) return;
@@ -97,23 +138,18 @@ export default function Home() {
     showToast("Parámetros guardados");
   }, [currentDeptId, showToast]);
 
-  const totalHours = employees.reduce((s, e) => s + e.weekly_hours, 0);
+  const totalHours = activeEmployees.reduce((s, e) => s + e.weekly_hours, 0);
+  const dpw = currentDept?.params?.days_per_week ?? 5;
 
   return (
     <>
       <Sidebar
-        departments={departments}
-        employees={employees}
-        currentDeptId={currentDeptId}
-        onSelectDept={(id) => setCurrentDeptId(id)}
-        view={view}
-        onViewChange={setView}
-        collapsed={collapsed}
-        onToggle={toggleSidebar}
-        showToast={showToast}
+        departments={departments} employees={employees}
+        currentDeptId={currentDeptId} onSelectDept={(id) => setCurrentDeptId(id)}
+        view={view} onViewChange={setView}
+        collapsed={collapsed} onToggle={toggleSidebar} showToast={showToast}
       />
       <div className="main">
-        {/* TOP BAR */}
         <div className="top">
           {collapsed && (
             <button className="btn btn-ghost" onClick={toggleSidebar} style={{ padding: "8px 10px" }}>
@@ -121,32 +157,25 @@ export default function Home() {
             </button>
           )}
           <div className="dhead">
-            <div className="dchip" style={{ background: currentDept?.color ?? "#999" }}>
-              {currentDept?.name?.[0] ?? "?"}
-            </div>
+            <div className="dchip" style={{ background: currentDept?.color ?? "#999" }}>{currentDept?.name?.[0] ?? "?"}</div>
             <div>
               <h2>{currentDept?.name ?? "..."}</h2>
-              <p>{employees.length} personas &middot; {totalHours} h / semana</p>
+              <p>{activeEmployees.length} personas &middot; {totalHours} h / semana</p>
             </div>
           </div>
           <div className="spacer" />
           {view === "grid" && schedule && (
-            <button className="btn btn-ghost" onClick={() => exportCegidCSV(schedule, employees)}>
-              <svg className="ico" viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" /></svg>{" "}
-              Exportar Cegid
+            <button className="btn btn-ghost" onClick={() => exportCegidCSV(schedule, activeEmployees, dpw)}>
+              <svg className="ico" viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" /></svg> Exportar Cegid
             </button>
           )}
           {view === "grid" && (
             <button className="btn btn-go" onClick={() => generateRef.current?.()}>
-              <svg className="ico" viewBox="0 0 24 24">
-                <path d="M5 12l3 3 5-7M13 5l2 2M19 4l-1.5 3.5L14 9l3.5 1.5L19 14l1.5-3.5L24 9" />
-              </svg>{" "}
-              Generar
+              <svg className="ico" viewBox="0 0 24 24"><path d="M5 12l3 3 5-7M13 5l2 2M19 4l-1.5 3.5L14 9l3.5 1.5L19 14l1.5-3.5L24 9" /></svg> Generar
             </button>
           )}
         </div>
 
-        {/* VIEW TABS */}
         <div className="viewtabs">
           {(["grid", "team", "params"] as const).map((v) => (
             <div key={v} className={`vtab ${view === v ? "active" : ""}`} onClick={() => setView(v)}>
@@ -158,20 +187,23 @@ export default function Home() {
           ))}
         </div>
 
-        {/* SCROLL CONTENT */}
         <div className="scroll">
           {view === "grid" && currentDept && (
             <GridView
-              department={currentDept}
-              employees={employees}
-              schedule={schedule}
-              onSchedule={setSchedule}
-              showToast={showToast}
-              generateRef={generateRef}
+              department={currentDept} employees={activeEmployees}
+              allEmployees={effectiveEmployees} weekOverrides={weekOverrides}
+              schedule={schedule} onSchedule={setSchedule}
+              showToast={showToast} generateRef={generateRef}
+              weekMonday={weekMonday} onWeekChange={setWeekMonday}
             />
           )}
           {view === "team" && currentDept && (
-            <TeamView department={currentDept} employees={employees} departments={departments} showToast={showToast} />
+            <TeamView
+              department={currentDept} employees={employees}
+              departments={departments} showToast={showToast}
+              weekMonday={weekMonday} weekOverrides={weekOverrides}
+              onOverridesChange={setWeekOverrides}
+            />
           )}
           {view === "params" && currentDept && (
             <ParamsView department={currentDept} onUpdateParams={updateParams} />
@@ -179,7 +211,6 @@ export default function Home() {
         </div>
       </div>
 
-      {/* TOAST */}
       <div className={`toast ${toast ? "show" : ""}`}>
         <span className="dotok" />
         <span dangerouslySetInnerHTML={{ __html: toast ?? "" }} />
