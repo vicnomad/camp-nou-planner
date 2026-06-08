@@ -70,7 +70,30 @@ export default function GridView({ department, employees, allEmployees, weekOver
         return { id:emp.id, name:emp.name, weekly_hours:emp.weekly_hours, availability:emp.availability,
           ...(emp.fixed?{fixed:emp.fixed}:{}), ...(abs.length>0?{absences:abs}:{}) };
       });
-      const payload = { department:{id:department.id,name:department.name}, params:{...params,store_hours:mergedStoreHours}, employees:solverEmps };
+      // Build solver params based on demand mode
+      const mode2 = params.demand_mode ?? "billing";
+      const solverParams: Record<string, unknown> = { ...params, store_hours: mergedStoreHours };
+
+      if (mode2 === "billing") {
+        // Apply billing_pct to store billing → dept billing
+        const pct = (params.billing_pct ?? 100) / 100;
+        const deptDaily: Record<string, number> = {};
+        for (const d of DAYS_KEYS) deptDaily[d] = Math.round((params.billing?.daily?.[d] ?? 0) * pct);
+        solverParams.billing = { ...params.billing, daily: deptDaily };
+      } else if (mode2 === "cajas") {
+        // Cajas = store billing with effective productivity = ticket_medio × clients_per_cash_hour
+        const effProd = (params.ticket_medio ?? 25) * (params.clients_per_cash_hour ?? 15);
+        solverParams.billing = { ...params.billing, productivity_eur_per_person_hour: effProd };
+      } else if (mode2 === "cobertura") {
+        // Coverage mode: send demand_curve, zero out billing
+        const curve: Record<string, { from: string; to: string; min: number; max: number }[]> = {};
+        const bands = params.coverage_bands ?? [];
+        for (const d of DAYS_KEYS) curve[d] = bands;
+        solverParams.demand_curve = curve;
+        solverParams.billing = { ...params.billing, daily: Object.fromEntries(DAYS_KEYS.map(d => [d, 0])) };
+      }
+
+      const payload = { department:{id:department.id,name:department.name}, params:solverParams, employees:solverEmps };
       const res = await fetch(`${SOLVER_URL}/api/solve`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
       if(!res.ok) throw new Error(`HTTP ${res.status}`);
       const result: SolveResult = await res.json();

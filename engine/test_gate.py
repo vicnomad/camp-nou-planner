@@ -168,6 +168,39 @@ if os.path.exists(fixture_path):
 else:
     check("fixture file exists", False, "fixtures/accesorios_real.json not found")
 
+# ── (g) Coverage mode (demand_curve) ───────────────────────────────
+print("\n(g) Modo Cobertura (demand_curve explícita)")
+p7 = json.loads(json.dumps(BASE))
+# Remove billing (not needed for coverage mode)
+p7["billing"]["daily"] = {d: 0 for d in DAYS}
+# Add explicit demand_curve — Almacén style: 2 bands per day
+p7["demand_curve"] = {}
+for d in DAYS:
+    p7["demand_curve"][d] = [
+        {"from": "08:00", "to": "14:00", "min": 2, "max": 3},
+        {"from": "14:00", "to": "21:00", "min": 1, "max": 2},
+    ]
+r7 = solve({
+    "department": {"id":"alm", "name":"Almacén"},
+    "params": p7,
+    "employees": [
+        {"id":"W1","name":"Solé, Pere",  "weekly_hours":25,"availability":"M"},
+        {"id":"W2","name":"Riba, Toni",  "weekly_hours":25,"availability":"F"},
+        {"id":"W3","name":"Tomàs, Quim", "weekly_hours":25,"availability":"M"},
+        {"id":"W4","name":"Vila, Aleix", "weekly_hours":25,"availability":"T"},
+    ],
+})
+check("status OPTIMAL/FEASIBLE", r7["status"] in ("OPTIMAL","FEASIBLE"), r7["status"])
+check("NOT INFEASIBLE", r7["status"] != "INFEASIBLE")
+check("has schedule", len(r7["schedule"]) == 4)
+# Coverage targets should reflect the bands (min 1-2), not billing
+cov_mon = r7["coverage"].get("MON", [])
+open_cov = [c for c in cov_mon if c["target"] > 0]
+check("coverage has targets from bands", len(open_cov) > 0, f"open slots with target: {len(open_cov)}")
+# Check targets are 1 or 2 (from the bands), not billing-derived huge numbers
+max_tgt = max((c["target"] for c in open_cov), default=0)
+check(f"max target is reasonable ({max_tgt})", max_tgt <= 3, f"got {max_tgt}")
+
 # ── summary ────────────────────────────────────────────────────────
 print(f"\n{'='*50}")
 print(f"  {PASS} passed, {FAIL} failed")

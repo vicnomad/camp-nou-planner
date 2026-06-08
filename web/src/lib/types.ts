@@ -15,13 +15,28 @@ export interface Billing {
   profiles: Record<string, BillingProfile>;
 }
 
+export type DemandMode = "billing" | "cajas" | "cobertura";
+
+export interface CoverageBand {
+  from: string;
+  to: string;
+  min: number;
+  max: number;
+}
+
 export interface DepartmentParams {
-  grid_default_start: string;
+  grid_default_start?: string;
   days_per_week: number;
   preopen: { minutes: number; min: number; max: number };
   postclose: { minutes: number; min: number; max: number };
   store_hours: Record<string, StoreHours>;
   billing: Billing;
+  // Demand model
+  demand_mode?: DemandMode;
+  billing_pct?: number;           // % of store billing (Facturación mode)
+  ticket_medio?: number;          // €/client (Cajas mode)
+  clients_per_cash_hour?: number; // clients one cash register handles/hour
+  coverage_bands?: CoverageBand[];// explicit min/max bands (Cobertura mode)
 }
 
 export interface Department {

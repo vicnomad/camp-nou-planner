@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import type { Department, DepartmentParams, BillingProfile } from "@/lib/types";
+import type { Department, DepartmentParams, BillingProfile, DemandMode, CoverageBand } from "@/lib/types";
 import { DAYS_KEYS, DAY_LABELS } from "@/lib/types";
 
 interface Props {
@@ -84,6 +84,8 @@ export default function ParamsView({ department, onUpdateParams }: Props) {
       billing: { ...p.billing, productivity_eur_per_person_hour: val },
     }));
   }
+
+  const demandMode = params.demand_mode ?? "billing";
 
   const currentProfile: BillingProfile = params.billing?.profiles?.[profile] ?? {};
   const profileHours = Object.keys(currentProfile)
@@ -313,193 +315,141 @@ export default function ParamsView({ department, onUpdateParams }: Props) {
         </div>
       </div>
 
-      {/* RIGHT COLUMN — BILLING */}
+      {/* RIGHT COLUMN — DEMAND MODEL */}
       <div className="card">
         <div className="cardpad psec">
           <h4>
-            <svg
-              className="ico"
-              viewBox="0 0 24 24"
-              style={{ stroke: "var(--garnet)", width: 16, height: 16 }}
-            >
-              <path d="M12 2v20M17 6a4 4 0 0 0-4-2H10a3 3 0 0 0 0 6h4a3 3 0 0 1 0 6h-3a4 4 0 0 1-4-2" />
-            </svg>{" "}
-            Facturación → demanda
+            <svg className="ico" viewBox="0 0 24 24" style={{stroke:"var(--garnet)",width:16,height:16}}>
+              <path d="M12 2v20M17 6a4 4 0 0 0-4-2H10a3 3 0 0 0 0 6h4a3 3 0 0 1 0 6h-3a4 4 0 0 1-4-2"/>
+            </svg> Modelo de demanda
           </h4>
-          <p className="desc">
-            De aquí sale cuánta gente necesitas en cada franja.
-          </p>
+          <p className="desc">Cómo se calcula cuánta gente necesita este departamento por franja.</p>
 
-          {/* Daily billing */}
-          <div className="field">
-            <label>
-              1 · Facturación diaria prevista{" "}
-              <span className="hint">Venta real del día en € (ej. 9.000)</span>
-            </label>
-            <div
-              className="import"
-              onClick={() => fileRef.current?.click()}
-            >
-              <svg viewBox="0 0 24 24">
-                <path d="M12 16V4m0 0 4 4m-4-4-4 4M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
-              </svg>
-              <div>
-                <b>Importar mes desde Excel</b>
-                <small>
-                  arrastra el .xlsx con la facturación diaria del mes
-                </small>
-              </div>
-              <span className="impbtn">Subir</span>
-            </div>
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".xlsx,.xls"
-              style={{ display: "none" }}
-              onChange={handleExcelImport}
-            />
-            <div className="bill-days">
-              {DAYS_KEYS.map((d) => {
-                const val = params.billing?.daily?.[d] ?? 0;
-                const tooHigh = val > 1000000;
-                return (
-                  <div key={d} className="bd" style={tooHigh ? {borderColor:"var(--bad)",background:"#fef0f0"} : {}}>
-                    <label>{d}</label>
-                    <div className="eur">
-                      <input
-                        value={val || ""}
-                        onChange={(e) => setBillingDaily(d, +e.target.value || 0)}
-                        type="number"
-                        placeholder="0"
-                      />
-                      <span>€</span>
-                    </div>
-                    {tooHigh && <div style={{fontSize:8,color:"var(--bad)",marginTop:2}}>¿Seguro?</div>}
-                  </div>
-                );
-              })}
-            </div>
-            {Object.values(params.billing?.daily ?? {}).some(v => (v as number) > 1000000) && (
-              <div style={{fontSize:11,color:"var(--bad)",marginTop:6,fontWeight:500}}>
-                ⚠ Algún valor supera 1.000.000 €/día. ¿Son euros reales? (ej. 9.000 € para un día normal)
-              </div>
-            )}
+          {/* Mode selector */}
+          <div className="profiles" style={{marginBottom:14}}>
+            {([["billing","Facturación"],["cajas","Cajas"],["cobertura","Cobertura"]] as const).map(([m,l])=>(
+              <button key={m} className={`prof ${demandMode===m?"active":""}`}
+                onClick={()=>update(p=>({...p,demand_mode:m}))}>
+                {l}
+              </button>
+            ))}
           </div>
 
-          {/* Profile percentages */}
-          <div className="field">
-            <label>
-              2 · Reparto por franja horaria{" "}
-              <span className="hint">(% de la venta del día)</span>
-            </label>
-            <div className="profiles">
-              <button
-                className={`prof ${profile === "normal" ? "active" : ""}`}
-                onClick={() => setProfile("normal")}
-              >
-                Día normal
-              </button>
-              <button
-                className={`prof ${profile === "match" ? "active" : ""}`}
-                onClick={() => setProfile("match")}
-              >
-                Día de partido ⚽
-              </button>
-              <span
-                className="pctsum"
-                style={{
-                  color:
-                    Math.abs(pctSum - 100) <= 2 ? "var(--ok)" : "var(--bad)",
-                }}
-              >
-                Σ {pctSum}%
-              </span>
+          {/* ── FACTURACIÓN mode ── */}
+          {demandMode === "billing" && (<>
+            <div className="field">
+              <label>Facturación diaria de TIENDA <span className="hint">Venta real del día en € (ej. 9.000) — compartida</span></label>
+              <div className="import" onClick={()=>fileRef.current?.click()}>
+                <svg viewBox="0 0 24 24"><path d="M12 16V4m0 0 4 4m-4-4-4 4M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+                <div><b>Importar mes desde Excel</b><small>arrastra el .xlsx</small></div>
+                <span className="impbtn">Subir</span>
+              </div>
+              <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{display:"none"}} onChange={handleExcelImport}/>
+              <div className="bill-days">
+                {DAYS_KEYS.map(d=>{const val=params.billing?.daily?.[d]??0;const hi=val>1000000;return(
+                  <div key={d} className="bd" style={hi?{borderColor:"var(--bad)",background:"#fef0f0"}:{}}>
+                    <label>{d}</label><div className="eur"><input value={val||""} onChange={e=>setBillingDaily(d,+e.target.value||0)} type="number" placeholder="0"/><span>€</span></div>
+                    {hi&&<div style={{fontSize:8,color:"var(--bad)",marginTop:2}}>¿Seguro?</div>}
+                  </div>);})}
+              </div>
+              {Object.values(params.billing?.daily??{}).some(v=>(v as number)>1000000)&&(
+                <div style={{fontSize:11,color:"var(--bad)",marginTop:6,fontWeight:500}}>⚠ Algún valor supera 1M€/día</div>)}
             </div>
-            <div className="pctgrid">
-              {profileHours.map((hr) => (
-                <div key={hr} className="pctchip">
-                  <span>{hr}h</span>
-                  <input
-                    type="number"
-                    value={currentProfile[String(hr)] ?? 0}
-                    onChange={(e) =>
-                      setProfilePct(String(hr), +e.target.value || 0)
-                    }
-                  />
-                  <i>%</i>
+            <div style={{display:"flex",gap:12,marginBottom:14}}>
+              <div className="field" style={{flex:1}}>
+                <label>% facturación de este dpto <span className="hint">(del total tienda)</span></label>
+                <div style={{display:"flex",alignItems:"center",gap:4}}>
+                  <input className="eurinput" type="number" value={params.billing_pct??15}
+                    onChange={e=>update(p=>({...p,billing_pct:+e.target.value||0}))} style={{width:60}}/>
+                  <span style={{fontSize:12,color:"var(--ink-3)"}}>%</span>
                 </div>
-              ))}
+              </div>
+              <div className="field" style={{flex:1}}>
+                <label>Productividad <span className="hint">(€/persona·hora)</span></label>
+                <div style={{display:"flex",alignItems:"center",gap:4}}>
+                  <input className="eurinput" type="number" value={params.billing?.productivity_eur_per_person_hour??420}
+                    onChange={e=>setProductivity(+e.target.value||420)} style={{width:70}}/>
+                  <small style={{color:"var(--ink-3)",fontSize:10}}>Súbela si sobra · Bájala si falta</small>
+                </div>
+              </div>
             </div>
+            <div className="field">
+              <label>Perfil horario <span className="hint">(% por franja — compartido tienda)</span></label>
+              <div className="profiles"><button className={`prof ${profile==="normal"?"active":""}`} onClick={()=>setProfile("normal")}>Normal</button><button className={`prof ${profile==="match"?"active":""}`} onClick={()=>setProfile("match")}>Partido ⚽</button><span className="pctsum" style={{color:Math.abs(pctSum-100)<=2?"var(--ok)":"var(--bad)"}}>Σ {pctSum}%</span></div>
+              <div className="pctgrid">{profileHours.map(hr=>(<div key={hr} className="pctchip"><span>{hr}h</span><input type="number" value={currentProfile[String(hr)]??0} onChange={e=>setProfilePct(String(hr),+e.target.value||0)}/><i>%</i></div>))}</div>
+              <div className="chartbox"><div className="chart">{profileHours.map(hr=>{const pct=currentProfile[String(hr)]??0;return <div key={hr} className="col"><div className="rev" style={{height:`${(pct/maxPct)*100}%`}}/><div className="hl">{hr}h</div></div>;})}</div><div className="chleg"><span><span className="s1"/> Venta</span><span><span className="s2"/> Personas</span></div></div>
+            </div>
+          </>)}
 
-            {/* Chart */}
-            <div className="chartbox">
-              <div className="chart">
-                {profileHours.map((hr) => {
-                  const pct = currentProfile[String(hr)] ?? 0;
-                  return (
-                    <div key={hr} className="col">
-                      <div
-                        className="rev"
-                        style={{ height: `${(pct / maxPct) * 100}%` }}
-                      />
-                      <div className="hl">{hr}h</div>
-                    </div>
-                  );
-                })}
+          {/* ── CAJAS mode ── */}
+          {demandMode === "cajas" && (<>
+            <div className="note" style={{marginTop:0,marginBottom:14}}>
+              <svg className="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v.5M12 11v5"/></svg>
+              <div>Cajas = facturación tienda ÷ ticket medio = clientes/hora → ÷ clientes por caja = cajas necesarias.</div>
+            </div>
+            <div style={{display:"flex",gap:12,marginBottom:14}}>
+              <div className="field" style={{flex:1}}>
+                <label>Ticket medio <span className="hint">(€/cliente)</span></label>
+                <input className="eurinput" type="number" value={params.ticket_medio??25}
+                  onChange={e=>update(p=>({...p,ticket_medio:+e.target.value||25}))}/>
               </div>
-              <div className="chleg">
-                <span>
-                  <span className="s1" /> Venta por franja
-                </span>
-                <span>
-                  <span className="s2" /> Personas necesarias
-                </span>
+              <div className="field" style={{flex:1}}>
+                <label>Clientes/caja·hora</label>
+                <input className="eurinput" type="number" value={params.clients_per_cash_hour??15}
+                  onChange={e=>update(p=>({...p,clients_per_cash_hour:+e.target.value||15}))}/>
               </div>
             </div>
-          </div>
+            <div className="field">
+              <label>Facturación diaria de TIENDA <span className="hint">(€/día — compartida)</span></label>
+              <div className="bill-days">{DAYS_KEYS.map(d=>{const val=params.billing?.daily?.[d]??0;return(
+                <div key={d} className="bd"><label>{d}</label><div className="eur"><input value={val||""} onChange={e=>setBillingDaily(d,+e.target.value||0)} type="number" placeholder="0"/><span>€</span></div></div>);})}</div>
+            </div>
+          </>)}
 
-          {/* Productivity */}
-          <div className="field" style={{ marginBottom: 0 }}>
-            <label>
-              3 · Productividad{" "}
-              <span className="hint">
-                La palanca principal para ajustar la plantilla
-              </span>
-            </label>
-            <div className="prodbox">
-              <div className="lab">
-                ≈{" "}
-                <input
-                  className="eurinput"
-                  type="number"
-                  value={
-                    params.billing?.productivity_eur_per_person_hour ?? 420
-                  }
-                  onChange={(e) => setProductivity(+e.target.value || 420)}
-                />{" "}
-                € / persona·hora
-                <small>Súbela si sobra gente · Bájala si falta</small>
-              </div>
-              <div className="res">
-                <b>{peakHeads}</b>
-                <small>pico de personas</small>
-              </div>
+          {/* ── COBERTURA mode ── */}
+          {demandMode === "cobertura" && (<>
+            <div className="note" style={{marginTop:0,marginBottom:14}}>
+              <svg className="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v.5M12 11v5"/></svg>
+              <div>Sin facturación. Define tramos de mín/máx de personas directamente.</div>
             </div>
-          </div>
-
-          <div className="note">
-            <svg className="ico" viewBox="0 0 24 24">
-              <circle cx="12" cy="12" r="9" />
-              <path d="M12 8v.5M12 11v5" />
-            </svg>
-            <div>
-              <b>
-                Venta de la franja ÷ productividad = personas objetivo.
-              </b>{" "}
-              El día de partido usa su propio reparto, y el motor reparte los
-              turnos para cubrir esa curva.
-            </div>
-          </div>
+            <table className="hours-tbl">
+              <thead><tr><th>Desde</th><th>Hasta</th><th>Mín</th><th>Máx</th><th></th></tr></thead>
+              <tbody>
+                {(params.coverage_bands ?? []).map((b, i) => (
+                  <tr key={i}>
+                    <td><input className="timeinput" value={b.from} onChange={e => {
+                      const bands = [...(params.coverage_bands ?? [])];
+                      bands[i] = { ...bands[i], from: e.target.value };
+                      update(p => ({ ...p, coverage_bands: bands }));
+                    }}/></td>
+                    <td><input className="timeinput" value={b.to} onChange={e => {
+                      const bands = [...(params.coverage_bands ?? [])];
+                      bands[i] = { ...bands[i], to: e.target.value };
+                      update(p => ({ ...p, coverage_bands: bands }));
+                    }}/></td>
+                    <td><input className="num" type="number" value={b.min} onChange={e => {
+                      const bands = [...(params.coverage_bands ?? [])];
+                      bands[i] = { ...bands[i], min: +e.target.value };
+                      update(p => ({ ...p, coverage_bands: bands }));
+                    }}/></td>
+                    <td><input className="num" type="number" value={b.max} onChange={e => {
+                      const bands = [...(params.coverage_bands ?? [])];
+                      bands[i] = { ...bands[i], max: +e.target.value };
+                      update(p => ({ ...p, coverage_bands: bands }));
+                    }}/></td>
+                    <td><button className="editbtn" onClick={() => {
+                      const bands = (params.coverage_bands ?? []).filter((_, j) => j !== i);
+                      update(p => ({ ...p, coverage_bands: bands }));
+                    }}>✕</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <button className="addrow" style={{marginTop:8}} onClick={() => {
+              const bands = [...(params.coverage_bands ?? []), { from: "08:00", to: "14:00", min: 1, max: 2 }];
+              update(p => ({ ...p, coverage_bands: bands }));
+            }}>+ Añadir tramo</button>
+          </>)}
         </div>
       </div>
     </div>

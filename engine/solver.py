@@ -90,19 +90,38 @@ def solve(data):
     def s4(d, m):
         return (m - DC[d]["base"]) // 30
 
-    # ── billing targets ─────────────────────────────────────────────
-    TGT = {}
+    # ── demand targets ──────────────────────────────────────────────
+    # Two modes:
+    #  1) billing-based (default): billing.daily × profiles / productivity
+    #  2) explicit demand_curve: [{from,to,min,max}] per day → [lo,hi] per slot
+    demand_curve = P.get("demand_curve")  # optional: {DAY: [{from,to,min,max},...]}
+
+    TGT = {}      # slot → single target (billing mode)
+    TGT_BAND = {} # slot → (lo, hi) (coverage mode)
+
     for d in open_days:
         dc = DC[d]
-        pn = dc["sp"] if dc["sp"] in profiles else "normal"
-        pr = profiles.get(pn, {})
-        bl = daily_bill.get(d, 0)
-        TGT[d] = {}
-        for s in range(dc["o"], dc["c"]):
-            hr = ((dc["base"] + s*30) // 60) % 24
-            pct = pr.get(str(hr), 0)
-            t = max(1, round(bl * pct / 100 / productivity / 2)) if pct and bl else 1
-            TGT[d][s] = t
+        TGT[d] = {}; TGT_BAND[d] = {}
+
+        if demand_curve and d in demand_curve:
+            # Coverage mode: explicit min/max bands
+            for band in demand_curve[d]:
+                f_m = _tm(band["from"]); t_m = _tm(band["to"])
+                if t_m <= f_m: t_m += 1440
+                f_s = max(0, (f_m - dc["base"]) // 30)
+                t_s = min(dc["N"], (t_m - dc["base"]) // 30)
+                for s in range(f_s, t_s):
+                    TGT_BAND[d][s] = (band.get("min", 1), band.get("max", 99))
+        else:
+            # Billing mode: compute from revenue × profile / productivity
+            pn = dc["sp"] if dc["sp"] in profiles else "normal"
+            pr = profiles.get(pn, {})
+            bl = daily_bill.get(d, 0)
+            for s in range(dc["o"], dc["c"]):
+                hr = ((dc["base"] + s*30) // 60) % 24
+                pct = pr.get(str(hr), 0)
+                t = max(1, round(bl * pct / 100 / productivity / 2)) if pct and bl else 1
+                TGT[d][s] = t
 
     # ── employees ───────────────────────────────────────────────────
     warns = []
@@ -253,9 +272,18 @@ def solve(data):
             if s in COV[d]:
                 soft(COV[d][s], pre_lo, pre_hi, WU_BAND, WO_BAND, f"pre{d}{s}")
         for s in range(dc["o"], dc["c"]):
-            if s in COV[d]:
-                tgt = TGT[d].get(s, 1)
+            if s not in COV[d]: continue
+            if s in TGT_BAND[d]:
+                # Coverage mode: explicit [lo, hi]
+                lo, hi = TGT_BAND[d][s]
+                soft(COV[d][s], lo, hi, WU_BAND, WO_BAND, f"dem{d}{s}")
+            elif s in TGT[d]:
+                # Billing mode: target ± slack
+                tgt = TGT[d][s]
                 soft(COV[d][s], tgt, tgt+10, WU_DEM, WO_DEM, f"dem{d}{s}")
+            else:
+                # Open slot with no explicit target: at least 1
+                soft(COV[d][s], 1, 99, WU_DEM, WO_DEM, f"dem{d}{s}")
         for s in range(dc["c"], dc["po"]):
             if s in COV[d]:
                 soft(COV[d][s], post_lo, post_hi, WU_BAND, WO_BAND, f"pst{d}{s}")
@@ -315,7 +343,12 @@ def solve(data):
         pre_gap=[]; post_gap=[]; ex_gap=[]; empty=[]
         for s in range(dc["N"]):
             if s not in COV[d]: continue
-            tgt = TGT[d].get(s, 0); asgn = slv.value(COV[d][s])
+            asgn = slv.value(COV[d][s])
+            # target for output: use band min if coverage mode, else billing target
+            if s in TGT_BAND[d]:
+                tgt = TGT_BAND[d][s][0]  # use min as the target for display
+            else:
+                tgt = TGT[d].get(s, 0)
             covout[d].append({"time": _hm(dc["base"]+s*30), "target": tgt, "assigned": asgn})
             if 0 <= s < dc["o"] and asgn < pre_lo:  pre_gap.append(pre_lo - asgn)
             if dc["c"] <= s < dc["po"] and asgn < post_lo: post_gap.append(post_lo - asgn)
