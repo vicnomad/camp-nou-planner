@@ -31,8 +31,23 @@ export interface Department {
   params: DepartmentParams;
 }
 
+export interface AbsenceType {
+  code: string;
+  label: string;
+  countsAsWorked: boolean;
+}
+
+export const DEFAULT_ABSENCE_TYPES: AbsenceType[] = [
+  { code: "VCN", label: "Vacaciones", countsAsWorked: false },
+  { code: "VAA", label: "Vacaciones año anterior", countsAsWorked: false },
+  { code: "FRC", label: "Festivo recuperado", countsAsWorked: false },
+  { code: "DEC", label: "Día de convenio", countsAsWorked: false },
+  { code: "BJA", label: "Baja", countsAsWorked: false },
+  { code: "DLB", label: "Día libre", countsAsWorked: false },
+];
+
 export interface Absence {
-  type: "vacation";
+  type: string; // code from AbsenceType (e.g. "VCN", "BJA")
   days: string[];
 }
 
@@ -72,21 +87,11 @@ export const DAYS_KEYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"] as co
 export type DayKey = (typeof DAYS_KEYS)[number];
 
 export const DAY_LABELS: Record<DayKey, string> = {
-  MON: "Lunes",
-  TUE: "Martes",
-  WED: "Miércoles",
-  THU: "Jueves",
-  FRI: "Viernes",
-  SAT: "Sábado",
-  SUN: "Domingo",
+  MON: "Lunes", TUE: "Martes", WED: "Miércoles", THU: "Jueves",
+  FRI: "Viernes", SAT: "Sábado", SUN: "Domingo",
 };
 
 export const DAY_SHORT: Record<DayKey, string> = {
-  MON: "Lun",
-  TUE: "Mar",
-  WED: "Mié",
-  THU: "Jue",
-  FRI: "Vie",
-  SAT: "Sáb",
-  SUN: "Dom",
+  MON: "Lun", TUE: "Mar", WED: "Mié", THU: "Jue",
+  FRI: "Vie", SAT: "Sáb", SUN: "Dom",
 };

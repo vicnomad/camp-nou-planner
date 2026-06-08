@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect, type MutableRefObject } from "react";
 import { db } from "@/lib/firebase";
 import { doc, setDoc } from "firebase/firestore";
 import type {
@@ -22,6 +22,7 @@ interface Props {
   schedule: SolveResult | null;
   onSchedule: (r: SolveResult) => void;
   showToast: (msg: string) => void;
+  generateRef: MutableRefObject<(() => void) | null>;
 }
 
 function hh(m: number) {
@@ -48,6 +49,7 @@ export default function GridView({
   schedule,
   onSchedule,
   showToast,
+  generateRef,
 }: Props) {
   const [mode, setMode] = useState<"dia" | "semana">("dia");
   const [dayIdx, setDayIdx] = useState(0);
@@ -69,8 +71,8 @@ export default function GridView({
     try {
       // Build solver input
       const solverEmps = employees.map((emp) => {
+        // ALL absence types = forced days off for the solver
         const vacDays = (emp.absences ?? [])
-          .filter((a) => a.type === "vacation")
           .flatMap((a) => (Array.isArray(a.days) ? a.days : []));
         return {
           id: emp.id,
@@ -115,6 +117,12 @@ export default function GridView({
     }
   }, [department, employees, params, onSchedule, showToast]);
 
+  // Expose generate to parent (header button)
+  useEffect(() => {
+    generateRef.current = handleGenerate;
+    return () => { generateRef.current = null; };
+  }, [handleGenerate, generateRef]);
+
   return (
     <>
       <div className="gridbar">
@@ -144,21 +152,7 @@ export default function GridView({
           </div>
         </div>
         <div className="spacer" />
-        <button
-          className="btn btn-go"
-          data-generate
-          onClick={handleGenerate}
-          disabled={loading}
-        >
-          {loading ? (
-            <span className="spinner" />
-          ) : (
-            <svg className="ico" viewBox="0 0 24 24">
-              <path d="M5 12l3 3 5-7M13 5l2 2M19 4l-1.5 3.5L14 9l3.5 1.5L19 14l1.5-3.5L24 9" />
-            </svg>
-          )}{" "}
-          Generar
-        </button>
+        {loading && <span className="spinner" style={{ borderColor: "var(--garnet)", borderTopColor: "#fff" }} />}
         <button
           className="btn btn-ghost"
           onClick={() => {

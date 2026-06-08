@@ -284,3 +284,33 @@ body{font-family:'Hanken Grotesk',sans-serif;background:var(--canvas);color:var(
   .ghead .grow{height:13px} .crow{height:14px}
   .entlabel{font-size:6px} .cell .fill{inset:2px 0}
 }
+
+/* MOBILE RESPONSIVE */
+@media (max-width: 768px) {
+  body{flex-direction:column}
+  .side{display:none}
+  .top{padding:10px 14px;gap:10px}
+  .dchip{width:28px;height:28px;font-size:12px;flex:0 0 28px}
+  .dhead h2{font-size:14px}
+  .dhead p{font-size:10px}
+  .viewtabs{padding:0 14px;overflow-x:auto}
+  .vtab{padding:10px 12px;font-size:12px;white-space:nowrap}
+  .scroll{padding:12px 10px}
+  .pgrid{grid-template-columns:1fr}
+  .bill-days{grid-template-columns:repeat(4,1fr)}
+  .teamtools{flex-direction:column;align-items:stretch}
+  .search{max-width:100%}
+  .days{overflow-x:auto;width:100%}
+  .gridbar{flex-direction:column;align-items:stretch;gap:10px}
+  /* Grid: fixed meta + scrollable cells */
+  .gwrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .gmeta{position:sticky;left:0;z-index:5;background:var(--paper);min-width:0}
+  .c-name{flex:0 0 120px;padding:0 6px}
+  .c-base{flex:0 0 36px;font-size:10px}
+  .c-ent{flex:0 0 42px;font-size:10px}
+  .c-tot{flex:0 0 36px;font-size:10px}
+  .nm b{max-width:80px;font-size:11px}
+  .avmini{width:20px;height:20px;font-size:8px}
+  .btn{font-size:11px;padding:7px 10px}
+  .modal{width:95vw;max-height:85vh}
+}

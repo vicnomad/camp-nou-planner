@@ -3,8 +3,8 @@
 import { useState, useMemo } from "react";
 import { db } from "@/lib/firebase";
 import { doc, setDoc, deleteDoc } from "firebase/firestore";
-import type { Department, Employee, Absence } from "@/lib/types";
-import { DAYS_KEYS, DAY_SHORT } from "@/lib/types";
+import type { Department, Employee, Absence, AbsenceType } from "@/lib/types";
+import { DAYS_KEYS, DAY_SHORT, DEFAULT_ABSENCE_TYPES } from "@/lib/types";
 
 interface Props {
   department: Department;
@@ -260,10 +260,17 @@ function EmployeeModal({
   onDelete: () => void;
   onClose: () => void;
 }) {
+  const [absenceType, setAbsenceType] = useState("VCN");
   const hasFixed = !!employee.fixed;
-  const vacDays = (employee.absences ?? [])
-    .filter((a) => a.type === "vacation")
-    .flatMap((a) => (Array.isArray(a.days) ? a.days : []));
+  const absences = employee.absences ?? [];
+
+  // Build a map: day -> absence code
+  const dayAbsenceMap: Record<string, string> = {};
+  for (const a of absences) {
+    if (Array.isArray(a.days)) {
+      for (const d of a.days) dayAbsenceMap[d] = a.type;
+    }
+  }
 
   function toggleFixed() {
     if (hasFixed) {
@@ -291,15 +298,22 @@ function EmployeeModal({
     });
   }
 
-  function toggleVacDay(day: string) {
-    const newDays = vacDays.includes(day)
-      ? vacDays.filter((d) => d !== day)
-      : [...vacDays, day];
-    const absences: Absence[] =
-      newDays.length > 0
-        ? [{ type: "vacation", days: newDays }]
-        : [];
-    onChange({ ...employee, absences });
+  function toggleAbsenceDay(day: string) {
+    const current = dayAbsenceMap[day];
+    const newMap = { ...dayAbsenceMap };
+    if (current) {
+      delete newMap[day]; // remove absence for this day
+    } else {
+      newMap[day] = absenceType; // add with selected type
+    }
+    // Rebuild absences array grouped by type
+    const grouped: Record<string, string[]> = {};
+    for (const [d, code] of Object.entries(newMap)) {
+      if (!grouped[code]) grouped[code] = [];
+      grouped[code].push(d);
+    }
+    const newAbsences: Absence[] = Object.entries(grouped).map(([type, days]) => ({ type, days }));
+    onChange({ ...employee, absences: newAbsences });
   }
 
   return (
@@ -438,29 +452,37 @@ function EmployeeModal({
             )}
           </div>
           <div className="form-field">
-            <label>Vacaciones (días libres esta semana)</label>
-            <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-              {DAYS_KEYS.map((d) => (
-                <button
-                  key={d}
-                  className="day"
-                  style={{
-                    background: vacDays.includes(d)
-                      ? "var(--gold)"
-                      : "var(--canvas)",
-                    color: vacDays.includes(d) ? "#7a5500" : "var(--ink-2)",
-                    padding: "6px 10px",
-                    border: "1px solid var(--line)",
-                    borderRadius: 8,
-                    cursor: "pointer",
-                    fontWeight: 600,
-                    fontSize: 12,
-                  }}
-                  onClick={() => toggleVacDay(d)}
-                >
-                  {DAY_SHORT[d]}
-                </button>
+            <label>Ausencias (días libres esta semana)</label>
+            <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+              {DEFAULT_ABSENCE_TYPES.map((at) => (
+                <button key={at.code} onClick={() => setAbsenceType(at.code)} style={{
+                  padding: "4px 10px", borderRadius: 8, fontSize: 11, fontWeight: 600,
+                  border: absenceType === at.code ? "2px solid var(--garnet)" : "1px solid var(--line)",
+                  background: absenceType === at.code ? "var(--garnet)" : "var(--canvas)",
+                  color: absenceType === at.code ? "#fff" : "var(--ink-2)",
+                  cursor: "pointer",
+                }}>{at.code}</button>
               ))}
+            </div>
+            <div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 6 }}>
+              Selecciona tipo y pulsa los días:
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              {DAYS_KEYS.map((d) => {
+                const code = dayAbsenceMap[d];
+                return (
+                  <button key={d} style={{
+                    padding: "6px 10px", borderRadius: 8, fontSize: 12, fontWeight: 600,
+                    background: code ? "var(--gold)" : "var(--canvas)",
+                    color: code ? "#7a5500" : "var(--ink-2)",
+                    border: "1px solid var(--line)", cursor: "pointer",
+                    display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
+                  }} onClick={() => toggleAbsenceDay(d)}>
+                    {DAY_SHORT[d]}
+                    {code && <span style={{ fontSize: 8, fontWeight: 700 }}>{code}</span>}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
