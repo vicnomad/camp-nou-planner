@@ -44,18 +44,6 @@ export default function ParamsView({ department, onUpdateParams }: Props) {
     }));
   }
 
-  function toggleSpecial(day: string) {
-    update((p) => {
-      const sh = { ...p.store_hours[day] };
-      if (sh.special === "match") {
-        delete sh.special;
-      } else {
-        sh.special = "match";
-      }
-      return { ...p, store_hours: { ...p.store_hours, [day]: sh } };
-    });
-  }
-
   function setPrePost(
     key: "preopen" | "postclose",
     field: "min" | "max" | "minutes",
@@ -181,7 +169,7 @@ export default function ParamsView({ department, onUpdateParams }: Props) {
               Horario de tienda por día
             </h4>
             <p className="desc">
-              Apertura y cierre de cada día. Marca los días de partido.
+              Apertura y cierre base de cada día. Los eventos (partido, inventario) se marcan por semana en la pestaña Cuadrícula.
             </p>
             <table className="hours-tbl">
               <thead>
@@ -189,7 +177,6 @@ export default function ParamsView({ department, onUpdateParams }: Props) {
                   <th>Día</th>
                   <th>Apertura</th>
                   <th>Cierre</th>
-                  <th>Partido</th>
                 </tr>
               </thead>
               <tbody>
@@ -198,35 +185,14 @@ export default function ParamsView({ department, onUpdateParams }: Props) {
                   if (!sh) return null;
                   return (
                     <tr key={d}>
-                      <td
-                        className={`daytag ${sh.special === "match" ? "match" : ""}`}
-                      >
-                        {DAY_LABELS[d]}{" "}
-                        {sh.special === "match" ? "⚽" : sh.special === "inventory" ? "📦" : ""}
+                      <td className="daytag">{DAY_LABELS[d]}</td>
+                      <td>
+                        <input className="timeinput" value={sh.open}
+                          onChange={(e) => setStoreHour(d, "open", e.target.value)} />
                       </td>
                       <td>
-                        <input
-                          className="timeinput"
-                          value={sh.open}
-                          onChange={(e) =>
-                            setStoreHour(d, "open", e.target.value)
-                          }
-                        />
-                      </td>
-                      <td>
-                        <input
-                          className="timeinput"
-                          value={sh.close}
-                          onChange={(e) =>
-                            setStoreHour(d, "close", e.target.value)
-                          }
-                        />
-                      </td>
-                      <td>
-                        <div
-                          className={`tg ${sh.special === "match" ? "on" : ""}`}
-                          onClick={() => toggleSpecial(d)}
-                        />
+                        <input className="timeinput" value={sh.close}
+                          onChange={(e) => setStoreHour(d, "close", e.target.value)} />
                       </td>
                     </tr>
                   );
@@ -253,56 +219,45 @@ export default function ParamsView({ department, onUpdateParams }: Props) {
               Personal de montaje antes de abrir y cierre tras cerrar.
             </p>
             <table className="hours-tbl">
+              <thead><tr><th>Franja</th><th>Duración</th><th>Mín / Máx personas</th></tr></thead>
               <tbody>
                 <tr>
-                  <td className="daytag">Montaje (pre-apertura)</td>
-                  <td>{params.preopen?.minutes ?? 30} min</td>
-                  <td>→ apertura</td>
+                  <td className="daytag">Montaje (antes de abrir)</td>
+                  <td>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <input className="num" type="number" step="0.5" min="0" style={{ width: 56 }}
+                        value={(params.preopen?.minutes ?? 30) / 60}
+                        onChange={(e) => setPrePost("preopen", "minutes", Math.round((+e.target.value || 0) * 60))} />
+                      <span style={{ fontSize: 11, color: "var(--ink-3)" }}>horas</span>
+                    </div>
+                  </td>
                   <td>
                     <div className="minmax">
-                      <input
-                        className="num"
-                        type="number"
-                        value={params.preopen?.min ?? 2}
-                        onChange={(e) =>
-                          setPrePost("preopen", "min", +e.target.value)
-                        }
-                      />
+                      <input className="num" type="number" value={params.preopen?.min ?? 2}
+                        onChange={(e) => setPrePost("preopen", "min", +e.target.value)} />
                       <span style={{ color: "var(--ink-3)" }}>–</span>
-                      <input
-                        className="num"
-                        type="number"
-                        value={params.preopen?.max ?? 3}
-                        onChange={(e) =>
-                          setPrePost("preopen", "max", +e.target.value)
-                        }
-                      />
+                      <input className="num" type="number" value={params.preopen?.max ?? 3}
+                        onChange={(e) => setPrePost("preopen", "max", +e.target.value)} />
                     </div>
                   </td>
                 </tr>
                 <tr>
-                  <td className="daytag">Cierre / arreglo tienda</td>
-                  <td>cierre →</td>
-                  <td>+{params.postclose?.minutes ?? 30} min</td>
+                  <td className="daytag">Cierre (después de cerrar)</td>
+                  <td>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <input className="num" type="number" step="0.5" min="0" style={{ width: 56 }}
+                        value={(params.postclose?.minutes ?? 30) / 60}
+                        onChange={(e) => setPrePost("postclose", "minutes", Math.round((+e.target.value || 0) * 60))} />
+                      <span style={{ fontSize: 11, color: "var(--ink-3)" }}>horas</span>
+                    </div>
+                  </td>
                   <td>
                     <div className="minmax">
-                      <input
-                        className="num"
-                        type="number"
-                        value={params.postclose?.min ?? 2}
-                        onChange={(e) =>
-                          setPrePost("postclose", "min", +e.target.value)
-                        }
-                      />
+                      <input className="num" type="number" value={params.postclose?.min ?? 2}
+                        onChange={(e) => setPrePost("postclose", "min", +e.target.value)} />
                       <span style={{ color: "var(--ink-3)" }}>–</span>
-                      <input
-                        className="num"
-                        type="number"
-                        value={params.postclose?.max ?? 3}
-                        onChange={(e) =>
-                          setPrePost("postclose", "max", +e.target.value)
-                        }
-                      />
+                      <input className="num" type="number" value={params.postclose?.max ?? 3}
+                        onChange={(e) => setPrePost("postclose", "max", +e.target.value)} />
                     </div>
                   </td>
                 </tr>

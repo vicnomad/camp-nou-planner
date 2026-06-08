@@ -1,7 +1,8 @@
 """Camp Nou Planner - CP-SAT schedule solver.
 
 One call = one department, one week.
-Grid of 30-minute slots starting at grid_default_start (default 07:00).
+Grid of 30-minute slots. Each day starts at (open - preopen) and ends at
+max(close + postclose, extra_end). No fixed 07:00 floor.
 
 HARD constraints (employee-level only):
   - 1 shift per day, exactly N working days per contract
@@ -9,7 +10,7 @@ HARD constraints (employee-level only):
   - Fixed schedule respected
   - Absences = forced days off
 
-SOFT constraints (penalties, so solver ALWAYS produces a schedule):
+SOFT constraints (penalties → solver ALWAYS produces a schedule):
   - Pre-open min/max, post-close min/max, extra window min/max
   - At least 1 person during open hours
   - Billing-based demand targets
@@ -23,74 +24,98 @@ DAY_LABELS = {
     "FRI": "Viernes", "SAT": "Sábado", "SUN": "Domingo",
 }
 
-# Penalty weights (higher = more important to satisfy)
-W_EMPTY_OPEN = 20    # no one during open hours
-W_PREPOST_UNDER = 15 # below min for pre-open / post-close / extra
-W_PREPOST_OVER = 3   # above max for pre-open / post-close / extra
-W_DEMAND_UNDER = 4   # below billing target
-W_DEMAND_OVER = 1    # above billing target
+W_EMPTY_OPEN = 20
+W_PREPOST_UNDER = 15
+W_PREPOST_OVER = 3
+W_DEMAND_UNDER = 4
+W_DEMAND_OVER = 1
+
+# Internal slot reference point (midnight). All minutes are absolute from 00:00.
+# Past-midnight times (e.g. 01:00 close) are handled by adding 1440 when < open.
+REF = 0
 
 
 def _tm(t: str) -> int:
-    """HH:MM -> minutes since midnight."""
     h, m = map(int, t.split(":"))
     return h * 60 + m
 
 
 def _fmt(m: int) -> str:
-    """Minutes since midnight -> HH:MM (wraps at 24 h)."""
     return f"{(m // 60) % 24:02d}:{m % 60:02d}"
 
 
 def solve(data: dict) -> dict:
     params = data["params"]
     employees = data["employees"]
-    grid0 = _tm(params.get("grid_default_start", "07:00"))
     dpw = params.get("days_per_week", 5)
 
     pre_cfg = params.get("preopen", {})
     post_cfg = params.get("postclose", {})
-    pre_slots = pre_cfg.get("minutes", 0) // 30
-    post_slots = post_cfg.get("minutes", 0) // 30
-    pre_min = pre_cfg.get("min", 0)
-    pre_max = pre_cfg.get("max", 99)
-    post_min = post_cfg.get("min", 0)
-    post_max = post_cfg.get("max", 99)
+    pre_minutes = pre_cfg.get("minutes", 30)
+    post_minutes = post_cfg.get("minutes", 30)
+    pre_min_ppl = pre_cfg.get("min", 0)
+    pre_max_ppl = pre_cfg.get("max", 99)
+    post_min_ppl = post_cfg.get("min", 0)
+    post_max_ppl = post_cfg.get("max", 99)
 
     billing = params.get("billing", {})
     productivity = billing.get("productivity_eur_per_person_hour", 420)
     daily_bill = billing.get("daily", {})
     profiles = billing.get("profiles", {})
 
-    # -- helpers ---------------------------------------------------------
-    def to_slot(time_str: str) -> int:
-        m = _tm(time_str)
-        if m < grid0:
-            m += 24 * 60
-        return (m - grid0) // 30
-
     # -- day info --------------------------------------------------------
+    # Each day has its own slot space: slot 0 = day_base (open - preopen)
     day_cfg = {}
     for d in DAYS:
         sh = params["store_hours"][d]
-        o = to_slot(sh["open"])
-        c = to_slot(sh["close"])
-        pre_s = o - pre_slots
-        post_s = c + post_slots
-        last = post_s
+        open_m = _tm(sh["open"])
+        close_m = _tm(sh["close"])
+        if close_m <= open_m:
+            close_m += 1440  # past midnight
+
+        day_base = open_m - pre_minutes           # grid starts here
+        post_end = close_m + post_minutes
+        day_end = post_end
+
+        pre_slots = pre_minutes // 30
+        post_slots = post_minutes // 30
+        open_slot = pre_slots                      # = (open_m - day_base) / 30
+        close_slot = (close_m - day_base) // 30
+        post_slot = close_slot + post_slots
 
         extra = None
         if "extra" in sh:
             e = sh["extra"]
-            ef = to_slot(e["from"])
-            et = to_slot(e["to"])
-            extra = {"from": ef, "to": et, "min": e["min"], "max": e["max"]}
-            last = max(last, et)
+            ef_m = _tm(e["from"])
+            et_m = _tm(e["to"])
+            if ef_m < open_m: ef_m += 1440
+            if et_m <= ef_m:  et_m += 1440
+            extra = {
+                "from": (ef_m - day_base) // 30,
+                "to":   (et_m - day_base) // 30,
+                "min": e["min"], "max": e["max"],
+            }
+            day_end = max(day_end, et_m)
+
+        total_slots = (day_end - day_base + 29) // 30  # ceiling
 
         day_cfg[d] = {
-            "open": o, "close": c, "pre": pre_s, "post": post_s,
-            "last": last, "special": sh.get("special"), "extra": extra,
+            "base": day_base,          # absolute minutes of slot 0
+            "open": open_slot,
+            "close": close_slot,
+            "pre": 0,                  # first slot = pre-open start
+            "post": post_slot,
+            "last": total_slots,
+            "special": sh.get("special"),
+            "extra": extra,
+            "open_m": open_m,
+            "close_m": close_m,
         }
+
+    # -- per-day slot helper ---------------------------------------------
+    def abs_to_slot(d: str, abs_min: int) -> int:
+        """Absolute minutes → slot index for day d."""
+        return (abs_min - day_cfg[d]["base"]) // 30
 
     # -- billing targets -------------------------------------------------
     targets: dict[str, dict[int, int]] = {}
@@ -101,7 +126,8 @@ def solve(data: dict) -> dict:
         bill = daily_bill.get(d, 0)
         targets[d] = {}
         for s in range(di["open"], di["close"]):
-            hour = ((grid0 + s * 30) // 60) % 24
+            abs_min = di["base"] + s * 30
+            hour = (abs_min // 60) % 24
             pct = prof.get(str(hour), 0)
             if pct > 0 and bill > 0:
                 t = bill * pct / 100.0 / productivity / 2.0
@@ -121,24 +147,31 @@ def solve(data: dict) -> dict:
         avail = emp.get("availability", "F")
         working_days = dpw - len(vac)
 
-        # Validate: enough available days?
         available_days = 0
         for d in DAYS:
             if d in vac or fixed.get(d) == "off":
                 continue
             di = day_cfg[d]
+            # Availability in absolute minutes
             if avail == "M":
-                a_lo, a_hi = 0, to_slot("15:00")
+                av_lo, av_hi = 7 * 60, 15 * 60
             elif avail == "T":
-                a_lo, a_hi = to_slot("14:00"), di["last"]
+                av_lo, av_hi = 14 * 60, di["base"] + di["last"] * 30
             else:
-                a_lo, a_hi = 0, di["last"]
-            earliest = max(a_lo, di["pre"])
-            latest = min(a_hi, di["last"]) - shift_slots
+                av_lo, av_hi = di["base"], di["base"] + di["last"] * 30
+
+            # Convert to slots
+            s_lo = max(0, (av_lo - di["base"]) // 30)
+            s_hi = (av_hi - di["base"]) // 30
+
+            earliest = max(s_lo, di["pre"])
+            latest = min(s_hi, di["last"]) - shift_slots
+
             if d in fixed and fixed[d] != "off":
-                fs = to_slot(fixed[d])
+                fs = abs_to_slot(d, _tm(fixed[d]))
                 earliest = max(earliest, fs)
                 latest = min(latest, fs)
+
             if earliest <= latest:
                 available_days += 1
 
@@ -148,7 +181,7 @@ def solve(data: dict) -> dict:
                 f"pero su contrato exige {working_days} "
                 f"(revisa disponibilidad/jornada/fijos)"
             )
-            working_days = available_days  # relax to avoid infeasible
+            working_days = available_days
 
         emp_info.append({
             "id": emp["id"], "name": emp["name"],
@@ -180,18 +213,22 @@ def solve(data: dict) -> dict:
                 x[ei][d] = {}
                 continue
 
+            # Availability in absolute minutes
             if ed["availability"] == "M":
-                a_lo, a_hi = 0, to_slot("15:00")
+                av_lo, av_hi = 7 * 60, 15 * 60
             elif ed["availability"] == "T":
-                a_lo, a_hi = to_slot("14:00"), di["last"]
+                av_lo, av_hi = 14 * 60, di["base"] + di["last"] * 30
             else:
-                a_lo, a_hi = 0, di["last"]
+                av_lo, av_hi = di["base"], di["base"] + di["last"] * 30
 
-            earliest = max(a_lo, di["pre"])
-            latest = min(a_hi, di["last"]) - ed["shift_slots"]
+            s_lo = max(0, (av_lo - di["base"]) // 30)
+            s_hi = (av_hi - di["base"]) // 30
 
-            if d in ed["fixed"]:
-                fs = to_slot(ed["fixed"][d])
+            earliest = max(s_lo, di["pre"])
+            latest = min(s_hi, di["last"]) - ed["shift_slots"]
+
+            if d in ed["fixed"] and ed["fixed"][d] != "off":
+                fs = abs_to_slot(d, _tm(ed["fixed"][d]))
                 earliest = max(earliest, fs)
                 latest = min(latest, fs)
 
@@ -210,12 +247,11 @@ def solve(data: dict) -> dict:
             model.add(sum(starts.values()) == 1).only_enforce_if(w)
             model.add(sum(starts.values()) == 0).only_enforce_if(w.Not())
 
-        # HARD: working-days constraint (employee contract)
         week_w = [work[ei][d] for d in DAYS if work[ei][d] is not None]
         if week_w:
             model.add(sum(week_w) == ed["working_days"])
 
-    # -- coverage IntVars ------------------------------------------------
+    # -- coverage --------------------------------------------------------
     cov: dict[str, dict[int, object]] = {}
     for d in DAYS:
         di = day_cfg[d]
@@ -227,63 +263,49 @@ def solve(data: dict) -> dict:
                     if ss <= s < ss + emp_info[ei]["shift_slots"]:
                         parts.append(bv)
             cv = model.new_int_var(0, n, f"cov_{d}_{s}")
-            if parts:
-                model.add(cv == sum(parts))
-            else:
-                model.add(cv == 0)
+            model.add(cv == sum(parts) if parts else cv == 0)
             cov[d][s] = cv
 
-    # -- ALL coverage constraints are SOFT (penalties) -------------------
+    # -- soft objective --------------------------------------------------
     obj = []
-
     for d in DAYS:
         di = day_cfg[d]
 
-        # Pre-open: penalize being below min or above max
         for s in range(di["pre"], di["open"]):
-            if s not in cov[d]:
-                continue
+            if s not in cov[d]: continue
             u = model.new_int_var(0, n, f"pre_u_{d}_{s}")
             o = model.new_int_var(0, n, f"pre_o_{d}_{s}")
-            model.add(u >= pre_min - cov[d][s])
-            model.add(o >= cov[d][s] - pre_max)
+            model.add(u >= pre_min_ppl - cov[d][s])
+            model.add(o >= cov[d][s] - pre_max_ppl)
             obj.append(W_PREPOST_UNDER * u + W_PREPOST_OVER * o)
 
-        # Post-close: penalize being below min or above max
         for s in range(di["close"], di["post"]):
-            if s not in cov[d]:
-                continue
+            if s not in cov[d]: continue
             u = model.new_int_var(0, n, f"post_u_{d}_{s}")
             o = model.new_int_var(0, n, f"post_o_{d}_{s}")
-            model.add(u >= post_min - cov[d][s])
-            model.add(o >= cov[d][s] - post_max)
+            model.add(u >= post_min_ppl - cov[d][s])
+            model.add(o >= cov[d][s] - post_max_ppl)
             obj.append(W_PREPOST_UNDER * u + W_PREPOST_OVER * o)
 
-        # Extra window (inventory etc.): penalize being below min or above max
         if di["extra"]:
             ex = di["extra"]
             for s in range(ex["from"], ex["to"]):
-                if s not in cov[d]:
-                    continue
+                if s not in cov[d]: continue
                 u = model.new_int_var(0, n, f"ex_u_{d}_{s}")
                 o = model.new_int_var(0, n, f"ex_o_{d}_{s}")
                 model.add(u >= ex["min"] - cov[d][s])
                 model.add(o >= cov[d][s] - ex["max"])
                 obj.append(W_PREPOST_UNDER * u + W_PREPOST_OVER * o)
 
-        # Open hours: penalize having zero people (very heavy)
         for s in range(di["open"], di["close"]):
-            if s not in cov[d]:
-                continue
+            if s not in cov[d]: continue
             empty = model.new_bool_var(f"empty_{d}_{s}")
             model.add(cov[d][s] == 0).only_enforce_if(empty)
             model.add(cov[d][s] >= 1).only_enforce_if(empty.Not())
             obj.append(W_EMPTY_OPEN * empty)
 
-        # Billing demand targets (soft)
         for s, tgt in targets[d].items():
-            if s not in cov[d]:
-                continue
+            if s not in cov[d]: continue
             u = model.new_int_var(0, 50, f"u_{d}_{s}")
             o = model.new_int_var(0, 50, f"o_{d}_{s}")
             model.add(u >= tgt - cov[d][s])
@@ -311,8 +333,7 @@ def solve(data: dict) -> dict:
             "status": status, "objective": None,
             "schedule": {}, "coverage": {},
             "warnings": data_warnings + [
-                "No se encontró solución. Revisa los datos de los empleados "
-                "(disponibilidad, jornada, días fijos)."
+                "No se encontró solución. Revisa los datos de los empleados."
             ],
         }
 
@@ -322,7 +343,6 @@ def solve(data: dict) -> dict:
     for ei, ed in enumerate(emp_info):
         eid = ed["id"]
         schedule[eid] = {}
-        days_worked = 0
         for d in DAYS:
             if d in ed["vacations"]:
                 schedule[eid][d] = {"code": "vacation"}
@@ -331,10 +351,10 @@ def solve(data: dict) -> dict:
             if w is None or solver.value(w) == 0:
                 schedule[eid][d] = {"code": "off"}
                 continue
-            days_worked += 1
+            di = day_cfg[d]
             for ss, bv in x[ei][d].items():
                 if solver.value(bv) == 1:
-                    sm = grid0 + ss * 30
+                    sm = di["base"] + ss * 30
                     em = sm + ed["shift_slots"] * 30
                     schedule[eid][d] = {
                         "start": _fmt(sm),
@@ -344,74 +364,48 @@ def solve(data: dict) -> dict:
                     }
                     break
 
-    # -- generate coverage warnings --------------------------------------
+    # -- coverage output + warnings --------------------------------------
     coverage_out: dict[str, list] = {}
     for d in DAYS:
         di = day_cfg[d]
         coverage_out[d] = []
         label = DAY_LABELS.get(d, d)
-
-        # Track shortfalls for warnings
-        pre_short = []
-        post_short = []
-        extra_short = []
-        open_empty = []
+        pre_short, post_short, extra_short, open_empty = [], [], [], []
 
         for s in range(di["pre"], di["last"]):
-            if s not in cov[d]:
-                continue
+            if s not in cov[d]: continue
             tgt = targets[d].get(s, 0)
             assigned = solver.value(cov[d][s])
-            time_str = _fmt(grid0 + s * 30)
+            abs_min = di["base"] + s * 30
+            time_str = _fmt(abs_min)
             coverage_out[d].append({
                 "time": time_str, "target": tgt, "assigned": assigned,
             })
-
-            # Check shortfalls
-            if di["pre"] <= s < di["open"]:
-                if assigned < pre_min:
-                    pre_short.append((time_str, pre_min - assigned))
-            elif di["close"] <= s < di["post"]:
-                if assigned < post_min:
-                    post_short.append((time_str, post_min - assigned))
-            elif di["open"] <= s < di["close"]:
-                if assigned == 0:
-                    open_empty.append(time_str)
-
+            if di["pre"] <= s < di["open"] and assigned < pre_min_ppl:
+                pre_short.append((time_str, pre_min_ppl - assigned))
+            elif di["close"] <= s < di["post"] and assigned < post_min_ppl:
+                post_short.append((time_str, post_min_ppl - assigned))
+            elif di["open"] <= s < di["close"] and assigned == 0:
+                open_empty.append(time_str)
             if di["extra"]:
                 ex = di["extra"]
                 if ex["from"] <= s < ex["to"] and assigned < ex["min"]:
                     extra_short.append((time_str, ex["min"] - assigned))
 
-        # Emit warnings
         if pre_short:
             deficit = max(v for _, v in pre_short)
-            warnings.append(
-                f"{label} montaje {pre_short[0][0]}–{_fmt(grid0 + di['open'] * 30)}: "
-                f"faltan {deficit} persona(s) (mín. {pre_min})"
-            )
+            warnings.append(f"{label} montaje: faltan {deficit} persona(s) (mín. {pre_min_ppl})")
         if post_short:
             deficit = max(v for _, v in post_short)
-            warnings.append(
-                f"{label} cierre {_fmt(grid0 + di['close'] * 30)}–{_fmt(grid0 + di['post'] * 30)}: "
-                f"faltan {deficit} persona(s) (mín. {post_min})"
-            )
+            warnings.append(f"{label} cierre: faltan {deficit} persona(s) (mín. {post_min_ppl})")
         if extra_short:
             ex = di["extra"]
             deficit = max(v for _, v in extra_short)
             sp = di["special"] or "extra"
-            warnings.append(
-                f"{label} {sp} {_fmt(grid0 + ex['from'] * 30)}–{_fmt(grid0 + ex['to'] * 30)}: "
-                f"faltan {deficit} persona(s) (mín. {ex['min']})"
-            )
+            warnings.append(f"{label} {sp}: faltan {deficit} persona(s) (mín. {ex['min']})")
         if open_empty:
-            if len(open_empty) <= 3:
-                times = ", ".join(open_empty)
-            else:
-                times = f"{open_empty[0]}–{open_empty[-1]} ({len(open_empty)} franjas)"
-            warnings.append(
-                f"{label} horario comercial: 0 personas en {times}"
-            )
+            times = ", ".join(open_empty) if len(open_empty) <= 3 else f"{open_empty[0]}–{open_empty[-1]} ({len(open_empty)} franjas)"
+            warnings.append(f"{label} horario comercial: 0 personas en {times}")
 
     return {
         "status": status,
