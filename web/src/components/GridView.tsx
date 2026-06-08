@@ -81,9 +81,28 @@ export default function GridView({ department, employees, allEmployees, weekOver
         for (const d of DAYS_KEYS) deptDaily[d] = Math.round((params.billing?.daily?.[d] ?? 0) * pct);
         solverParams.billing = { ...params.billing, daily: deptDaily };
       } else if (mode2 === "cajas") {
-        // Cajas = store billing with effective productivity = ticket_medio × clients_per_cash_hour
-        const effProd = (params.ticket_medio ?? 25) * (params.clients_per_cash_hour ?? 15);
-        solverParams.billing = { ...params.billing, productivity_eur_per_person_hour: effProd };
+        // Cajas: compute demand_curve from billing × profile / ticket / clients_per_cash
+        const ticket = params.ticket_medio ?? 25;
+        const cpcH = params.clients_per_cash_hour ?? 15;
+        const curve: Record<string, { from: string; to: string; min: number; max: number }[]> = {};
+        for (const d of DAYS_KEYS) {
+          const sh2 = mergedStoreHours[d];
+          if (!sh2) continue;
+          const dayBill = params.billing?.daily?.[d] ?? 0;
+          const profName = sh2.special === "match" ? "match" : "normal";
+          const prof = params.billing?.profiles?.[profName] ?? {};
+          const bands: { from: string; to: string; min: number; max: number }[] = [];
+          for (const [hrS, pct] of Object.entries(prof).sort(([a],[b]) => +a - +b)) {
+            const hr = +hrS;
+            if (!pct) continue;
+            const clientsPerHour = dayBill * (pct as number) / 100 / ticket;
+            const cajas = Math.max(1, Math.ceil(clientsPerHour / cpcH));
+            bands.push({ from: `${String(hr).padStart(2,"0")}:00`, to: `${String(hr+1).padStart(2,"0")}:00`, min: cajas, max: cajas + 1 });
+          }
+          curve[d] = bands;
+        }
+        solverParams.demand_curve = curve;
+        solverParams.billing = { ...params.billing, daily: Object.fromEntries(DAYS_KEYS.map(d => [d, 0])) };
       } else if (mode2 === "cobertura") {
         // Coverage mode: send demand_curve, zero out billing
         const curve: Record<string, { from: string; to: string; min: number; max: number }[]> = {};
@@ -176,6 +195,27 @@ export default function GridView({ department, employees, allEmployees, weekOver
         )) : <div className="card cardpad" style={{textAlign:"center",color:"var(--ink-3)",padding:40}}>Pulsa <b>Generar</b></div>}
       </div>)}
 
+      {/* Weekly complementary summary */}
+      {displaySchedule && (() => {
+        const dpw2 = params.days_per_week ?? 5;
+        let totalCompl = 0;
+        for (const emp of employees) {
+          const hpd2 = emp.weekly_hours / dpw2;
+          for (const d of DAYS_KEYS) {
+            const e = displaySchedule.schedule?.[emp.id]?.[d];
+            if (e?.code === "normal" && e.hours) {
+              const ex = e.hours - hpd2;
+              if (ex > 0) totalCompl += ex;
+            }
+          }
+        }
+        return totalCompl > 0 ? (
+          <div style={{ marginTop: 10, padding: "8px 14px", background: "#fdf4dd", border: "1px solid #e8c96a", borderRadius: 10, fontSize: 13, fontWeight: 600, color: "#8a5e00" }}>
+            Complementarias semana ({department.name}): {totalCompl}h
+          </div>
+        ) : null;
+      })()}
+
       {displaySchedule && displaySchedule.warnings.length>0 && (
         <div style={{marginTop:14,background:"#fdf0d6",border:"1px solid var(--gold-deep)",borderRadius:12,padding:"12px 16px"}}>
           <b style={{color:"var(--gold-deep)"}}>Avisos ({displaySchedule.warnings.length})</b>
@@ -267,9 +307,14 @@ function DayGrid({day,params,storeHours,employees,allEmployees,inactiveIds,weekO
         const dp=dragPreview?.empId===emp.id?dragPreview:null;
         const dS=dp?dp.startSlot:ssSlot;const dSl=dp?dp.slots:shSlots;
 
-        let weekH=0,weekCompl=0;
-        for(const d of DAYS_KEYS){const e2=schedule.schedule?.[emp.id]?.[d];if(e2?.code==="normal"&&e2.hours){weekH+=e2.hours;const ex=e2.hours-hpd;if(ex>0)weekCompl+=ex;}}
-        if(dp&&isWorking){const oh=entry?.hours??hpd;const nh=dp.slots/2;weekCompl=weekCompl-Math.max(0,oh-hpd)+Math.max(0,nh-hpd);weekH=weekH-oh+nh;}
+        // Week totals for the Total column
+        let weekH=0;
+        for(const d2 of DAYS_KEYS){const e2=schedule.schedule?.[emp.id]?.[d2];if(e2?.code==="normal"&&e2.hours)weekH+=e2.hours;}
+
+        // Day-specific complementary: excess of THIS day only
+        let dayHours = isWorking ? (entry?.hours ?? hpd) : 0;
+        if(dp&&isWorking){ dayHours = dp.slots/2; weekH = weekH - (entry?.hours??hpd) + dayHours; }
+        const dayCompl = Math.max(0, dayHours - hpd);
 
         return (
           <div key={emp.id} className="grow" style={inactive?{opacity:.35}:{}}>
@@ -282,7 +327,7 @@ function DayGrid({day,params,storeHours,employees,allEmployees,inactiveIds,weekO
               <div className="c-base"><b>{emp.weekly_hours}</b><small>{hpd}h/d</small></div>
               <div className="c-ent">{inactive?"INACT":isWorking?entry?.start:isVac?(entry?.code??"AUS").toUpperCase().slice(0,3):"—"}</div>
               <div className="c-tot"><b>{isWorking?entry?.hours:isVac?"AUS":0}</b><small>{weekH}h sem</small></div>
-              <div className="c-compl" style={{color:weekCompl>0?"#b87800":"var(--ink-3)"}}><b style={{fontFamily:"'Spline Sans Mono'",fontSize:11}}>{weekCompl>0?`${weekCompl}h`:"0h"}</b></div>
+              <div className="c-compl" style={{color:dayCompl>0?"#b87800":"var(--ink-3)"}}><b style={{fontFamily:"'Spline Sans Mono'",fontSize:11}}>{dayCompl>0?`${dayCompl}h`:"0h"}</b></div>
             </div>
             <div className="cells">{Array.from({length:slotCount},(_,k)=>{
               const m=t0+k*30;const band=isBand(m);const he=(m+30)%60===0;

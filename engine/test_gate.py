@@ -201,6 +201,51 @@ check("coverage has targets from bands", len(open_cov) > 0, f"open slots with ta
 max_tgt = max((c["target"] for c in open_cov), default=0)
 check(f"max target is reasonable ({max_tgt})", max_tgt <= 3, f"got {max_tgt}")
 
+# ── (h) Cajas with non-flat profile via demand_curve ──────────────
+print("\n(h) Modo Cajas (demand_curve con perfil no plano)")
+p8 = json.loads(json.dumps(BASE))
+# Simulate Cajas: front computes demand_curve from billing × profile / ticket
+# Store billing 9000€, ticket 25€, clients/cash/hour 15, profile varies
+store_bill = 9000
+ticket = 25
+clients_per_cash_h = 15
+profile = {"8":0,"9":3,"10":11,"11":14,"12":12,"13":9,"14":7,"15":7,"16":9,"17":11,"18":11,"19":9,"20":5,"21":0}
+# Compute demand_curve: for each hour, cajas = ceil(store_bill * pct/100 / ticket * 2 / clients_per_cash_h)
+import math
+curve_day = []
+for hr_s, pct in sorted(profile.items(), key=lambda x: int(x[0])):
+    hr = int(hr_s)
+    if pct == 0:
+        continue
+    clients_per_hour = store_bill * pct / 100 / ticket
+    cajas = max(1, math.ceil(clients_per_hour / clients_per_cash_h))
+    curve_day.append({"from": f"{hr:02d}:00", "to": f"{hr+1:02d}:00", "min": cajas, "max": cajas + 1})
+
+p8["demand_curve"] = {d: curve_day for d in DAYS}
+p8["billing"]["daily"] = {d: 0 for d in DAYS}  # not used when demand_curve present
+
+r8 = solve({
+    "department": {"id": "cajas", "name": "Cajas"},
+    "params": p8,
+    "employees": [
+        {"id":"J1","name":"Serra, Mar",  "weekly_hours":25,"availability":"M"},
+        {"id":"J2","name":"Vidal, Joan", "weekly_hours":25,"availability":"T"},
+        {"id":"J3","name":"Costa, Aina", "weekly_hours":25,"availability":"F"},
+    ],
+})
+check("status OPTIMAL/FEASIBLE", r8["status"] in ("OPTIMAL","FEASIBLE"), r8["status"])
+check("NOT INFEASIBLE", r8["status"] != "INFEASIBLE")
+# Coverage targets should VARY by hour (not flat)
+cov_mon = r8["coverage"].get("MON", [])
+open_targets = [c["target"] for c in cov_mon if c["target"] > 0]
+check("has varying targets", len(set(open_targets)) > 1,
+      f"unique targets: {sorted(set(open_targets))}")
+# Peak target should be higher than valley
+if open_targets:
+    check(f"peak target ({max(open_targets)}) > valley ({min(open_targets)})",
+          max(open_targets) > min(open_targets),
+          f"all same: {open_targets[:5]}")
+
 # ── summary ────────────────────────────────────────────────────────
 print(f"\n{'='*50}")
 print(f"  {PASS} passed, {FAIL} failed")
