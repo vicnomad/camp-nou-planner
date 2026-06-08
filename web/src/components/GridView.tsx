@@ -208,6 +208,7 @@ export default function GridView({ department, employees, schedule, onSchedule, 
         </div>
         <div className="legend">
           <div className="lg"><span className="lgsw" style={{ background: color }} /> Normales</div>
+          <div className="lg"><span className="lgsw" style={{ background: "#d4940a" }} /> Complementarias</div>
           <div className="lg"><span className="lgsw lg-vac" /> Ausencias</div>
           <div className="lg"><span className="lgsw lg-band" /> Montaje/Cierre</div>
         </div>
@@ -325,7 +326,7 @@ function EventModal({ event, day, onSave, onRemove, onClose, hasEvent }: {
   );
 }
 
-/* ---------- Recalculate coverage locally ---------- */
+/* ---------- Recalculate coverage locally (with real billing targets) ---------- */
 function recalcCoverage(
   day: DayKey, sched: SolveResult, employees: Employee[],
   params: Department["params"], storeHours: Record<string, StoreHours>,
@@ -355,11 +356,23 @@ function recalcCoverage(
     }
   }
 
-  // TODO: billing targets could be recomputed here too
+  // Compute real billing targets
+  const billing = params.billing;
+  const productivity = billing?.productivity_eur_per_person_hour ?? 420;
+  const dailyBill = billing?.daily?.[day] ?? 0;
+  const profName = sh.special === "match" ? "match" : "normal";
+  const prof = billing?.profiles?.[profName] ?? {};
+
   return coverage.map((assigned, k) => {
     const slotM = t0 + k * 30;
     const open = slotM >= openM && slotM < closeM;
-    return { time: hh(slotM), target: open ? 1 : 0, assigned };
+    let target = 0;
+    if (open && dailyBill > 0) {
+      const hour = (Math.floor(slotM / 60) % 24);
+      const pct = prof[String(hour)] ?? 0;
+      target = pct > 0 ? Math.max(1, Math.round(dailyBill * pct / 100 / productivity / 2)) : 1;
+    }
+    return { time: hh(slotM), target, assigned };
   });
 }
 
@@ -460,6 +473,7 @@ function DayGrid({ day, params, storeHours, employees, schedule, color, onManual
         const isWorking = !isOff && !isVac;
         const dpw = params.days_per_week ?? 5;
         const hpd = emp.weekly_hours / dpw;
+        const baseSlots = Math.round(hpd * 2); // base shift length in slots
 
         let shiftStartSlot = -1, shiftSlots = 0;
         if (isWorking && entry?.start) {
@@ -473,10 +487,25 @@ function DayGrid({ day, params, storeHours, employees, schedule, color, onManual
         const dispStart = dp ? dp.startSlot : shiftStartSlot;
         const dispSlots = dp ? dp.slots : shiftSlots;
 
+        // Weekly hours + complementary hours
         let weekHours = 0;
+        let weekCompl = 0;
         for (const d of DAYS_KEYS) {
           const e2 = schedule.schedule?.[emp.id]?.[d];
-          if (e2?.code === "normal" && e2.hours) weekHours += e2.hours;
+          if (e2?.code === "normal" && e2.hours) {
+            weekHours += e2.hours;
+            const excess = e2.hours - hpd;
+            if (excess > 0) weekCompl += excess;
+          }
+        }
+        // Also account for current drag preview
+        if (dp && isWorking) {
+          const origHours = entry?.hours ?? hpd;
+          const newHours = dp.slots / 2;
+          const origExcess = Math.max(0, origHours - hpd);
+          const newExcess = Math.max(0, newHours - hpd);
+          weekCompl = weekCompl - origExcess + newExcess;
+          weekHours = weekHours - origHours + newHours;
         }
 
         return (
@@ -488,7 +517,8 @@ function DayGrid({ day, params, storeHours, employees, schedule, color, onManual
                 <div className="nm">
                   <b>{emp.name}</b>
                   <span><span className={`pill p-${emp.availability}`}>{emp.availability}</span>
-                  {emp.fixed && <svg className="lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>}</span>
+                  {emp.fixed && <svg className="lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>}
+                  {weekCompl > 0 && <span style={{fontSize:8,fontWeight:700,color:"#b87800",background:"#fdf4dd",padding:"1px 4px",borderRadius:4,marginLeft:2}}>+{weekCompl}h</span>}</span>
                 </div>
               </div>
               <div className="c-base"><b>{emp.weekly_hours}</b><small>{hpd}h/d</small></div>
@@ -511,9 +541,12 @@ function DayGrid({ day, params, storeHours, employees, schedule, color, onManual
                 const inShift = isWorking && k >= dispStart && k < dispStart + dispSlots;
                 if (inShift) {
                   const isS = k === dispStart, isE = k === dispStart + dispSlots - 1;
+                  const slotIdx = k - dispStart; // 0-based position within shift
+                  const isComplementary = slotIdx >= baseSlots;
+                  const cellColor = isComplementary ? "#d4940a" : color;
                   return <div key={k}
                     className={`cell w ${isS?"s":""} ${isE?"e":""} ${hourend?"hourend":""} ${band?"band":""}`}
-                    style={{"--dc": color, cursor: "grab"} as React.CSSProperties}
+                    style={{"--dc": cellColor, cursor: "grab"} as React.CSSProperties}
                     onPointerDown={(e) => handlePointerDown(e, emp.id, dispStart, dispSlots, k)}
                   >
                     <div className="fill"/>
@@ -527,9 +560,9 @@ function DayGrid({ day, params, storeHours, employees, schedule, color, onManual
         );
       })}
 
-      {/* COVERAGE */}
+      {/* COVERAGE — semaphore: red < target, green = target, amber > target */}
       <div className="crow">
-        <div className="gmeta"><div className="c-obs"/><div className="c-name">CANT. PERSONAS</div><div className="c-base"/><div className="c-ent" style={{fontSize:9,color:"var(--ink-3)"}}>obj→</div><div className="c-tot"/></div>
+        <div className="gmeta"><div className="c-obs"/><div className="c-name">CANT. PERSONAS</div><div className="c-base"/><div className="c-ent" style={{fontSize:9,color:"var(--ink-3)"}}>real/obj</div><div className="c-tot"/></div>
         <div className="cells">
           {Array.from({length: slotCount}, (_, k) => {
             const m = t0 + k * 30;
@@ -540,13 +573,15 @@ function DayGrid({ day, params, storeHours, employees, schedule, color, onManual
             const assigned = cov?.assigned ?? 0;
             const target = cov?.target ?? 0;
             let bg = "transparent", col = "var(--ink-3)";
-            if (open || assigned > 0) {
-              const ratio = assigned / Math.max(target, 1);
-              bg = assigned === 0 ? "#fdecec" : ratio < 0.8 ? "#fdf0d6" : "#e7f4ee";
-              col = assigned === 0 ? "var(--bad)" : ratio < 0.8 ? "var(--gold-deep)" : "var(--ok)";
+            if (open && target > 0) {
+              if (assigned < target) { bg = "#fdecec"; col = "var(--bad)"; }
+              else if (assigned === target) { bg = "#e7f4ee"; col = "var(--ok)"; }
+              else { bg = "#fdf0d6"; col = "var(--gold-deep)"; }
+            } else if (assigned > 0 && !open) {
+              bg = "#f5f7fa"; col = "var(--ink-3)";
             }
-            return <div key={k} className={`ccell ${hourend?"hourend":""}`} style={{background: bg, color: col}}>
-              {(open || assigned > 0) ? assigned : ""}
+            return <div key={k} className={`ccell ${hourend?"hourend":""}`} style={{background: bg, color: col, fontSize: target > 0 ? 9.5 : 11}}>
+              {open && target > 0 ? <><b>{assigned}</b><span style={{opacity:.5}}>/{target}</span></> : (assigned > 0 ? assigned : "")}
             </div>;
           })}
         </div>

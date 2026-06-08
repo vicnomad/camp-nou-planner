@@ -334,7 +334,7 @@ export default function ParamsView({ department, onUpdateParams }: Props) {
           <div className="field">
             <label>
               1 · Facturación diaria prevista{" "}
-              <span className="hint">(€/día)</span>
+              <span className="hint">Venta real del día en € (ej. 9.000)</span>
             </label>
             <div
               className="import"
@@ -360,27 +360,30 @@ export default function ParamsView({ department, onUpdateParams }: Props) {
             />
             <div className="bill-days">
               {DAYS_KEYS.map((d) => {
-                const sh = params.store_hours?.[d];
-                const isMatch = sh?.special === "match";
+                const val = params.billing?.daily?.[d] ?? 0;
+                const tooHigh = val > 1000000;
                 return (
-                  <div key={d} className={`bd ${isMatch ? "match" : ""}`}>
+                  <div key={d} className="bd" style={tooHigh ? {borderColor:"var(--bad)",background:"#fef0f0"} : {}}>
                     <label>{d}</label>
                     <div className="eur">
                       <input
-                        value={Math.round(
-                          (params.billing?.daily?.[d] ?? 0) / 1000
-                        )}
-                        onChange={(e) =>
-                          setBillingDaily(d, (+e.target.value || 0) * 1000)
-                        }
+                        value={val || ""}
+                        onChange={(e) => setBillingDaily(d, +e.target.value || 0)}
                         type="number"
+                        placeholder="0"
                       />
-                      <span>k€</span>
+                      <span>€</span>
                     </div>
+                    {tooHigh && <div style={{fontSize:8,color:"var(--bad)",marginTop:2}}>¿Seguro?</div>}
                   </div>
                 );
               })}
             </div>
+            {Object.values(params.billing?.daily ?? {}).some(v => (v as number) > 1000000) && (
+              <div style={{fontSize:11,color:"var(--bad)",marginTop:6,fontWeight:500}}>
+                ⚠ Algún valor supera 1.000.000 €/día. ¿Son euros reales? (ej. 9.000 € para un día normal)
+              </div>
+            )}
           </div>
 
           {/* Profile percentages */}
@@ -460,7 +463,7 @@ export default function ParamsView({ department, onUpdateParams }: Props) {
             <label>
               3 · Productividad{" "}
               <span className="hint">
-                (define cuánta venta cubre una persona)
+                La palanca principal para ajustar la plantilla
               </span>
             </label>
             <div className="prodbox">
@@ -475,7 +478,7 @@ export default function ParamsView({ department, onUpdateParams }: Props) {
                   onChange={(e) => setProductivity(+e.target.value || 420)}
                 />{" "}
                 € / persona·hora
-                <small>ventas medias que atiende 1 persona</small>
+                <small>Súbela si sobra gente · Bájala si falta</small>
               </div>
               <div className="res">
                 <b>{peakHeads}</b>
