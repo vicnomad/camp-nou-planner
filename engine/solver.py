@@ -237,8 +237,12 @@ def solve(data):
             obj.append(W_DAY_SHORT * short)
 
     def soft(cv, lo, hi, wu, wo, tag):
-        u = mdl.new_int_var(0, 60, f"u_{tag}")
-        o = mdl.new_int_var(0, 60, f"o_{tag}")
+        # Upper bound for slack must accommodate ANY gap between cov and target.
+        # cov ranges [0, n].  u needs to cover lo - 0 = lo.  o needs to cover n - hi.
+        u_max = max(lo, n, 1)
+        o_max = max(n - min(hi, 0), n, 1)
+        u = mdl.new_int_var(0, u_max, f"u_{tag}")
+        o = mdl.new_int_var(0, o_max, f"o_{tag}")
         mdl.add(cv + u >= lo)
         mdl.add(cv - o <= hi)
         obj.append(wu * u + wo * o)

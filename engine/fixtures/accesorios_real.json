@@ -1,0 +1,162 @@
+{
+  "department": {
+    "id": "acc",
+    "name": "Accesorios"
+  },
+  "params": {
+    "grid_default_start": "07:00",
+    "store_hours": {
+      "TUE": {
+        "close": "21:00",
+        "open": "10:00"
+      },
+      "FRI": {
+        "close": "21:00",
+        "open": "10:00"
+      },
+      "MON": {
+        "close": "21:00",
+        "open": "10:00"
+      },
+      "WED": {
+        "close": "21:00",
+        "open": "10:00"
+      },
+      "SAT": {
+        "close": "21:00",
+        "open": "10:00",
+        "special": "match"
+      },
+      "THU": {
+        "close": "21:00",
+        "open": "10:00",
+        "extra": {
+          "max": 3,
+          "min": 2,
+          "from": "21:00",
+          "to": "01:00"
+        },
+        "special": "inventory"
+      },
+      "SUN": {
+        "close": "21:00",
+        "open": "10:00"
+      }
+    },
+    "billing": {
+      "daily": {
+        "WED": 150000000,
+        "FRI": 150000000,
+        "MON": 149998000,
+        "TUE": 150000000,
+        "SAT": 150000000,
+        "THU": 150000000,
+        "SUN": 150000000
+      },
+      "productivity_eur_per_person_hour": 420,
+      "profiles": {
+        "match": {
+          "18": 9,
+          "17": 9,
+          "21": 14,
+          "8": 2,
+          "10": 6,
+          "20": 11,
+          "15": 7,
+          "16": 8,
+          "12": 7,
+          "22": 14,
+          "23": 9,
+          "13": 6,
+          "14": 6,
+          "19": 10,
+          "9": 3,
+          "11": 7
+        },
+        "normal": {
+          "20": 5,
+          "15": 7,
+          "18": 7,
+          "16": 7,
+          "12": 14,
+          "17": 7,
+          "21": 0,
+          "13": 12,
+          "14": 10,
+          "19": 7,
+          "9": 0,
+          "11": 14,
+          "8": 0,
+          "10": 12
+        }
+      }
+    },
+    "days_per_week": 5,
+    "postclose": {
+      "max": 3,
+      "min": 3,
+      "minutes": 60
+    },
+    "preopen": {
+      "max": 2,
+      "min": 2,
+      "minutes": 120
+    }
+  },
+  "employees": [
+    {
+      "id": "43999999M",
+      "name": "Andres",
+      "weekly_hours": 25,
+      "availability": "F"
+    },
+    {
+      "id": "4536364637l",
+      "name": "pepe",
+      "weekly_hours": 25,
+      "availability": "F"
+    },
+    {
+      "id": "45998112M",
+      "name": "Roca, Pau",
+      "weekly_hours": 25,
+      "availability": "F"
+    },
+    {
+      "id": "46012233K",
+      "name": "Pérez, Laia",
+      "weekly_hours": 25,
+      "availability": "T"
+    },
+    {
+      "id": "46709709K",
+      "name": "Victor gallego",
+      "weekly_hours": 25,
+      "availability": "F"
+    },
+    {
+      "id": "46777777p",
+      "name": "paco",
+      "weekly_hours": 25,
+      "availability": "F"
+    },
+    {
+      "id": "47672042B",
+      "name": "Jimenez, Paula",
+      "weekly_hours": 25,
+      "availability": "M"
+    },
+    {
+      "id": "49491064D",
+      "name": "Borja, Melissa",
+      "weekly_hours": 25,
+      "availability": "M"
+    },
+    {
+      "id": "54765375Y",
+      "name": "Ji Chen, Elena",
+      "weekly_hours": 25,
+      "availability": "T"
+    }
+  ]
+}

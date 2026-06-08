@@ -147,6 +147,27 @@ found_warn = any("no alcanza" in w or "solo" in w.lower() for w in r5["warnings"
 check("warning about insufficient days", found_warn,
       f"warnings: {r5['warnings'][:3]}")
 
+# ── (f) REAL Accesorios from Firestore (fixture) ──────────────────
+print("\n(f) Accesorios REAL (fixtures/accesorios_real.json)")
+import os
+fixture_path = os.path.join(os.path.dirname(__file__), "fixtures", "accesorios_real.json")
+if os.path.exists(fixture_path):
+    with open(fixture_path) as f:
+        real = json.load(f)
+    r6 = solve(real)
+    check("status OPTIMAL or FEASIBLE", r6["status"] in ("OPTIMAL","FEASIBLE"), r6["status"])
+    check("NOT INFEASIBLE", r6["status"] != "INFEASIBLE")
+    check("has schedule", len(r6["schedule"]) > 0)
+    check("has coverage", any(len(v) > 0 for v in r6["coverage"].values()))
+    n_emps = len(real["employees"])
+    n_sched = len(r6["schedule"])
+    check(f"schedule has all {n_emps} employees", n_sched == n_emps, f"got {n_sched}")
+    # billing is 150M but should NOT cause infeasible
+    bill_mon = real["params"]["billing"]["daily"].get("MON", 0)
+    check(f"handles extreme billing ({bill_mon}€)", r6["status"] != "INFEASIBLE")
+else:
+    check("fixture file exists", False, "fixtures/accesorios_real.json not found")
+
 # ── summary ────────────────────────────────────────────────────────
 print(f"\n{'='*50}")
 print(f"  {PASS} passed, {FAIL} failed")
