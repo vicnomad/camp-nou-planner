@@ -34,11 +34,40 @@ function tm(t: string) { const [h, m] = t.split(":").map(Number); return h * 60 
 function initials(name: string) { return name.split(",")[0].slice(0, 2).toUpperCase(); }
 
 function getMonday(d: Date) {
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  return new Date(d.getFullYear(), d.getMonth(), diff);
+  const dt = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const day = dt.getDay();
+  const diff = dt.getDate() - day + (day === 0 ? -6 : 1);
+  return new Date(dt.getFullYear(), dt.getMonth(), diff);
 }
 function fmtDate(d: Date) { return d.toISOString().slice(0, 10); }
+function isoWeek(d: Date): number {
+  const dt = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  dt.setUTCDate(dt.getUTCDate() + 4 - (dt.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(dt.getUTCFullYear(), 0, 1));
+  return Math.ceil((((dt.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+}
+function weekLabel(monday: Date): string {
+  const wn = isoWeek(monday);
+  const sunday = new Date(monday);
+  sunday.setDate(sunday.getDate() + 6);
+  const months = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+  const m1 = months[monday.getMonth()];
+  const m2 = months[sunday.getMonth()];
+  const dayRange = monday.getMonth() === sunday.getMonth()
+    ? `${monday.getDate()}–${sunday.getDate()} ${m2}`
+    : `${monday.getDate()} ${m1}–${sunday.getDate()} ${m2}`;
+  return `Semana ${wn} · ${dayRange} ${monday.getFullYear()}`;
+}
+function shiftWeek(mondayStr: string, delta: number): string {
+  const d = new Date(mondayStr + "T00:00:00");
+  d.setDate(d.getDate() + delta * 7);
+  return fmtDate(getMonday(d));
+}
+function weekIsoId(mondayStr: string): string {
+  const d = new Date(mondayStr + "T00:00:00");
+  const wn = isoWeek(d);
+  return `${d.getFullYear()}-W${String(wn).padStart(2, "0")}`;
+}
 
 export default function GridView({ department, employees, schedule, onSchedule, showToast, generateRef }: Props) {
   const [mode, setMode] = useState<"dia" | "semana">("dia");
@@ -54,7 +83,7 @@ export default function GridView({ department, employees, schedule, onSchedule, 
   const displaySchedule = editedSchedule ?? schedule;
 
   // Load week events from Firestore
-  const weekDocId = `${department.id}_${weekMonday}`;
+  const weekDocId = `${department.id}_${weekIsoId(weekMonday)}`;
   useEffect(() => {
     getDoc(doc(db, "weeks", weekDocId)).then((snap) => {
       if (snap.exists()) setEvents(snap.data().events ?? {});
@@ -129,7 +158,8 @@ export default function GridView({ department, employees, schedule, onSchedule, 
       onSchedule(result);
       setEditedSchedule(null);
       await setDoc(doc(db, "schedules", weekDocId), {
-        weekStart: weekMonday, department: department.id, ...result,
+        weekStart: weekMonday, weekIso: weekIsoId(weekMonday),
+        department: department.id, ...result,
       });
       showToast(`<b>${result.status}</b> · Objetivo ${result.objective}${result.warnings.length > 0 ? ` · ${result.warnings.length} avisos` : ""}`);
     } catch (e) {
@@ -157,10 +187,18 @@ export default function GridView({ department, employees, schedule, onSchedule, 
     <>
       {/* Week selector */}
       <div className="gridbar">
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <label style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-2)" }}>Semana:</label>
-          <input type="date" value={weekMonday} onChange={(e) => setWeekMonday(fmtDate(getMonday(new Date(e.target.value))))}
-            style={{ fontFamily: "'Spline Sans Mono'", fontSize: 12, border: "1px solid var(--line)", borderRadius: 8, padding: "6px 10px", background: "var(--paper)" }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 4, background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 11, padding: "3px 4px", boxShadow: "var(--shadow)" }}>
+          <button onClick={() => setWeekMonday(shiftWeek(weekMonday, -1))} style={{
+            border: "none", background: "transparent", cursor: "pointer", padding: "5px 8px", borderRadius: 8,
+            fontSize: 14, color: "var(--ink-2)", fontWeight: 700,
+          }}>‹</button>
+          <span style={{ fontFamily: "'Spline Sans Mono'", fontSize: 12, fontWeight: 600, padding: "0 6px", whiteSpace: "nowrap" }}>
+            {weekLabel(new Date(weekMonday + "T00:00:00"))}
+          </span>
+          <button onClick={() => setWeekMonday(shiftWeek(weekMonday, 1))} style={{
+            border: "none", background: "transparent", cursor: "pointer", padding: "5px 8px", borderRadius: 8,
+            fontSize: 14, color: "var(--ink-2)", fontWeight: 700,
+          }}>›</button>
         </div>
         <div className="gridtoggle">
           <button className={`gt ${mode === "dia" ? "active" : ""}`} onClick={() => setMode("dia")}>Por día</button>

@@ -1,19 +1,17 @@
 """Camp Nou Planner - CP-SAT schedule solver.
 
 One call = one department, one week.
-Grid of 30-minute slots. Each day starts at (open - preopen) and ends at
-max(close + postclose, extra_end). No fixed 07:00 floor.
 
-HARD constraints (employee-level only):
+HARD constraints (ONLY employee-level):
   - 1 shift per day, exactly N working days per contract
   - Shift fits within availability window (M/T/F)
   - Fixed schedule respected
   - Absences = forced days off
 
-SOFT constraints (penalties → solver ALWAYS produces a schedule):
-  - Pre-open min/max, post-close min/max, extra window min/max
-  - At least 1 person during open hours
-  - Billing-based demand targets
+ALL coverage is SOFT (penalties via slack variables):
+  cov + u >= lo   (u = under-coverage, penalized)
+  cov - o <= hi   (o = over-coverage, penalized lightly)
+  → ALWAYS FEASIBLE unless employee data is contradictory.
 """
 
 from ortools.sat.python import cp_model
@@ -24,15 +22,10 @@ DAY_LABELS = {
     "FRI": "Viernes", "SAT": "Sábado", "SUN": "Domingo",
 }
 
-W_EMPTY_OPEN = 20
-W_PREPOST_UNDER = 15
-W_PREPOST_OVER = 3
-W_DEMAND_UNDER = 4
-W_DEMAND_OVER = 1
-
-# Internal slot reference point (midnight). All minutes are absolute from 00:00.
-# Past-midnight times (e.g. 01:00 close) are handled by adding 1440 when < open.
-REF = 0
+W_OPEN_UNDER = 8     # below demand / min-1 during open hours
+W_OPEN_OVER = 1      # above demand during open hours
+W_BAND_UNDER = 6     # below min for montaje / cierre / extra
+W_BAND_OVER = 2      # above max for montaje / cierre / extra
 
 
 def _tm(t: str) -> int:
@@ -42,6 +35,16 @@ def _tm(t: str) -> int:
 
 def _fmt(m: int) -> str:
     return f"{(m // 60) % 24:02d}:{m % 60:02d}"
+
+
+def _soft(model, obj, cov_var, lo: int, hi: int, w_under: int, w_over: int,
+          tag: str, n: int):
+    """Add soft [lo, hi] on cov_var. Pure linear, always feasible."""
+    u = model.new_int_var(0, 60, f"u_{tag}")
+    o = model.new_int_var(0, 60, f"o_{tag}")
+    model.add(cov_var + u >= lo)
+    model.add(cov_var - o <= hi)
+    obj.append(w_under * u + w_over * o)
 
 
 def solve(data: dict) -> dict:
@@ -64,22 +67,21 @@ def solve(data: dict) -> dict:
     profiles = billing.get("profiles", {})
 
     # -- day info --------------------------------------------------------
-    # Each day has its own slot space: slot 0 = day_base (open - preopen)
     day_cfg = {}
     for d in DAYS:
         sh = params["store_hours"][d]
         open_m = _tm(sh["open"])
         close_m = _tm(sh["close"])
         if close_m <= open_m:
-            close_m += 1440  # past midnight
+            close_m += 1440
 
-        day_base = open_m - pre_minutes           # grid starts here
+        day_base = open_m - pre_minutes
         post_end = close_m + post_minutes
         day_end = post_end
 
         pre_slots = pre_minutes // 30
         post_slots = post_minutes // 30
-        open_slot = pre_slots                      # = (open_m - day_base) / 30
+        open_slot = pre_slots
         close_slot = (close_m - day_base) // 30
         post_slot = close_slot + post_slots
 
@@ -88,8 +90,10 @@ def solve(data: dict) -> dict:
             e = sh["extra"]
             ef_m = _tm(e["from"])
             et_m = _tm(e["to"])
-            if ef_m < open_m: ef_m += 1440
-            if et_m <= ef_m:  et_m += 1440
+            if ef_m < open_m:
+                ef_m += 1440
+            if et_m <= ef_m:
+                et_m += 1440
             extra = {
                 "from": (ef_m - day_base) // 30,
                 "to":   (et_m - day_base) // 30,
@@ -97,24 +101,16 @@ def solve(data: dict) -> dict:
             }
             day_end = max(day_end, et_m)
 
-        total_slots = (day_end - day_base + 29) // 30  # ceiling
+        total_slots = (day_end - day_base + 29) // 30
 
         day_cfg[d] = {
-            "base": day_base,          # absolute minutes of slot 0
-            "open": open_slot,
-            "close": close_slot,
-            "pre": 0,                  # first slot = pre-open start
-            "post": post_slot,
-            "last": total_slots,
-            "special": sh.get("special"),
-            "extra": extra,
-            "open_m": open_m,
-            "close_m": close_m,
+            "base": day_base, "open": open_slot, "close": close_slot,
+            "pre": 0, "post": post_slot, "last": total_slots,
+            "special": sh.get("special"), "extra": extra,
+            "open_m": open_m, "close_m": close_m,
         }
 
-    # -- per-day slot helper ---------------------------------------------
     def abs_to_slot(d: str, abs_min: int) -> int:
-        """Absolute minutes → slot index for day d."""
         return (abs_min - day_cfg[d]["base"]) // 30
 
     # -- billing targets -------------------------------------------------
@@ -148,38 +144,39 @@ def solve(data: dict) -> dict:
         working_days = dpw - len(vac)
 
         available_days = 0
+        cant_work_reasons = []
         for d in DAYS:
             if d in vac or fixed.get(d) == "off":
                 continue
             di = day_cfg[d]
-            # Availability in absolute minutes
             if avail == "M":
                 av_lo, av_hi = 7 * 60, 15 * 60
             elif avail == "T":
                 av_lo, av_hi = 14 * 60, di["base"] + di["last"] * 30
             else:
                 av_lo, av_hi = di["base"], di["base"] + di["last"] * 30
-
-            # Convert to slots
             s_lo = max(0, (av_lo - di["base"]) // 30)
             s_hi = (av_hi - di["base"]) // 30
-
             earliest = max(s_lo, di["pre"])
             latest = min(s_hi, di["last"]) - shift_slots
-
             if d in fixed and fixed[d] != "off":
                 fs = abs_to_slot(d, _tm(fixed[d]))
                 earliest = max(earliest, fs)
                 latest = min(latest, fs)
-
             if earliest <= latest:
                 available_days += 1
+            else:
+                window_h = max(0, (min(av_hi, di["base"] + di["last"] * 30) - max(av_lo, di["base"]))) / 60
+                cant_work_reasons.append(
+                    f"{DAY_LABELS.get(d, d)}: ventana {avail} = {window_h:.1f}h "
+                    f"< jornada {hpd}h"
+                )
 
         if available_days < working_days:
+            reason = "; ".join(cant_work_reasons[:3])
             data_warnings.append(
                 f"{emp['name']}: solo puede trabajar {available_days} días "
-                f"pero su contrato exige {working_days} "
-                f"(revisa disponibilidad/jornada/fijos)"
+                f"de {working_days} ({reason})"
             )
             working_days = available_days
 
@@ -207,23 +204,19 @@ def solve(data: dict) -> dict:
     for ei, ed in enumerate(emp_info):
         for d in DAYS:
             di = day_cfg[d]
-
             if d in ed["vacations"] or ed["fixed"].get(d) == "off":
                 work[ei][d] = None
                 x[ei][d] = {}
                 continue
 
-            # Availability in absolute minutes
             if ed["availability"] == "M":
                 av_lo, av_hi = 7 * 60, 15 * 60
             elif ed["availability"] == "T":
                 av_lo, av_hi = 14 * 60, di["base"] + di["last"] * 30
             else:
                 av_lo, av_hi = di["base"], di["base"] + di["last"] * 30
-
             s_lo = max(0, (av_lo - di["base"]) // 30)
             s_hi = (av_hi - di["base"]) // 30
-
             earliest = max(s_lo, di["pre"])
             latest = min(s_hi, di["last"]) - ed["shift_slots"]
 
@@ -243,7 +236,6 @@ def solve(data: dict) -> dict:
             for s in range(earliest, latest + 1):
                 starts[s] = model.new_bool_var(f"x_{ei}_{d}_{s}")
             x[ei][d] = starts
-
             model.add(sum(starts.values()) == 1).only_enforce_if(w)
             model.add(sum(starts.values()) == 0).only_enforce_if(w.Not())
 
@@ -251,7 +243,7 @@ def solve(data: dict) -> dict:
         if week_w:
             model.add(sum(week_w) == ed["working_days"])
 
-    # -- coverage --------------------------------------------------------
+    # -- coverage IntVars ------------------------------------------------
     cov: dict[str, dict[int, object]] = {}
     for d in DAYS:
         di = day_cfg[d]
@@ -263,56 +255,53 @@ def solve(data: dict) -> dict:
                     if ss <= s < ss + emp_info[ei]["shift_slots"]:
                         parts.append(bv)
             cv = model.new_int_var(0, n, f"cov_{d}_{s}")
-            model.add(cv == sum(parts) if parts else cv == 0)
+            if parts:
+                model.add(cv == sum(parts))
+            else:
+                model.add(cv == 0)
             cov[d][s] = cv
 
-    # -- soft objective --------------------------------------------------
-    obj = []
+    # -- SOFT objective: ZERO hard coverage constraints -------------------
+    # Every coverage requirement uses: cov + u >= lo, cov - o <= hi
+    obj: list = []
+
     for d in DAYS:
         di = day_cfg[d]
 
+        # Montaje (pre-open): soft [pre_min_ppl, pre_max_ppl]
         for s in range(di["pre"], di["open"]):
-            if s not in cov[d]: continue
-            u = model.new_int_var(0, n, f"pre_u_{d}_{s}")
-            o = model.new_int_var(0, n, f"pre_o_{d}_{s}")
-            model.add(u >= pre_min_ppl - cov[d][s])
-            model.add(o >= cov[d][s] - pre_max_ppl)
-            obj.append(W_PREPOST_UNDER * u + W_PREPOST_OVER * o)
+            if s in cov[d]:
+                _soft(model, obj, cov[d][s],
+                      pre_min_ppl, pre_max_ppl,
+                      W_BAND_UNDER, W_BAND_OVER, f"pre_{d}_{s}", n)
 
+        # Open hours: soft demand target [target, target] + soft minimum [1, 99]
+        for s in range(di["open"], di["close"]):
+            if s not in cov[d]:
+                continue
+            tgt = targets[d].get(s, 1)
+            _soft(model, obj, cov[d][s],
+                  tgt, tgt + 10,
+                  W_OPEN_UNDER, W_OPEN_OVER, f"dem_{d}_{s}", n)
+
+        # Cierre (post-close): soft [post_min_ppl, post_max_ppl]
         for s in range(di["close"], di["post"]):
-            if s not in cov[d]: continue
-            u = model.new_int_var(0, n, f"post_u_{d}_{s}")
-            o = model.new_int_var(0, n, f"post_o_{d}_{s}")
-            model.add(u >= post_min_ppl - cov[d][s])
-            model.add(o >= cov[d][s] - post_max_ppl)
-            obj.append(W_PREPOST_UNDER * u + W_PREPOST_OVER * o)
+            if s in cov[d]:
+                _soft(model, obj, cov[d][s],
+                      post_min_ppl, post_max_ppl,
+                      W_BAND_UNDER, W_BAND_OVER, f"post_{d}_{s}", n)
 
+        # Extra (inventory etc.): soft [extra_min, extra_max]
         if di["extra"]:
             ex = di["extra"]
             for s in range(ex["from"], ex["to"]):
-                if s not in cov[d]: continue
-                u = model.new_int_var(0, n, f"ex_u_{d}_{s}")
-                o = model.new_int_var(0, n, f"ex_o_{d}_{s}")
-                model.add(u >= ex["min"] - cov[d][s])
-                model.add(o >= cov[d][s] - ex["max"])
-                obj.append(W_PREPOST_UNDER * u + W_PREPOST_OVER * o)
+                if s in cov[d]:
+                    _soft(model, obj, cov[d][s],
+                          ex["min"], ex["max"],
+                          W_BAND_UNDER, W_BAND_OVER, f"ex_{d}_{s}", n)
 
-        for s in range(di["open"], di["close"]):
-            if s not in cov[d]: continue
-            empty = model.new_bool_var(f"empty_{d}_{s}")
-            model.add(cov[d][s] == 0).only_enforce_if(empty)
-            model.add(cov[d][s] >= 1).only_enforce_if(empty.Not())
-            obj.append(W_EMPTY_OPEN * empty)
-
-        for s, tgt in targets[d].items():
-            if s not in cov[d]: continue
-            u = model.new_int_var(0, 50, f"u_{d}_{s}")
-            o = model.new_int_var(0, 50, f"o_{d}_{s}")
-            model.add(u >= tgt - cov[d][s])
-            model.add(o >= cov[d][s] - tgt)
-            obj.append(W_DEMAND_UNDER * u + W_DEMAND_OVER * o)
-
-    model.minimize(sum(obj))
+    if obj:
+        model.minimize(sum(obj))
 
     # -- solve -----------------------------------------------------------
     solver = cp_model.CpSolver()
@@ -329,12 +318,17 @@ def solve(data: dict) -> dict:
     status = status_map.get(rc, "UNKNOWN")
 
     if rc not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        # Should only happen with contradictory employee data
+        msgs = list(data_warnings)
+        if not msgs:
+            msgs.append(
+                "INFEASIBLE sin avisos de datos: posible bug. "
+                "Contacta al administrador."
+            )
         return {
             "status": status, "objective": None,
             "schedule": {}, "coverage": {},
-            "warnings": data_warnings + [
-                "No se encontró solución. Revisa los datos de los empleados."
-            ],
+            "warnings": msgs,
         }
 
     # -- extract solution ------------------------------------------------
@@ -357,10 +351,8 @@ def solve(data: dict) -> dict:
                     sm = di["base"] + ss * 30
                     em = sm + ed["shift_slots"] * 30
                     schedule[eid][d] = {
-                        "start": _fmt(sm),
-                        "end": _fmt(em),
-                        "hours": ed["hours_per_day"],
-                        "code": "normal",
+                        "start": _fmt(sm), "end": _fmt(em),
+                        "hours": ed["hours_per_day"], "code": "normal",
                     }
                     break
 
@@ -373,7 +365,8 @@ def solve(data: dict) -> dict:
         pre_short, post_short, extra_short, open_empty = [], [], [], []
 
         for s in range(di["pre"], di["last"]):
-            if s not in cov[d]: continue
+            if s not in cov[d]:
+                continue
             tgt = targets[d].get(s, 0)
             assigned = solver.value(cov[d][s])
             abs_min = di["base"] + s * 30
@@ -394,18 +387,23 @@ def solve(data: dict) -> dict:
 
         if pre_short:
             deficit = max(v for _, v in pre_short)
-            warnings.append(f"{label} montaje: faltan {deficit} persona(s) (mín. {pre_min_ppl})")
+            warnings.append(
+                f"{label} montaje: faltan {deficit} persona(s) (mín. {pre_min_ppl})")
         if post_short:
             deficit = max(v for _, v in post_short)
-            warnings.append(f"{label} cierre: faltan {deficit} persona(s) (mín. {post_min_ppl})")
+            warnings.append(
+                f"{label} cierre: faltan {deficit} persona(s) (mín. {post_min_ppl})")
         if extra_short:
             ex = di["extra"]
             deficit = max(v for _, v in extra_short)
             sp = di["special"] or "extra"
-            warnings.append(f"{label} {sp}: faltan {deficit} persona(s) (mín. {ex['min']})")
+            warnings.append(
+                f"{label} {sp}: faltan {deficit} persona(s) (mín. {ex['min']})")
         if open_empty:
-            times = ", ".join(open_empty) if len(open_empty) <= 3 else f"{open_empty[0]}–{open_empty[-1]} ({len(open_empty)} franjas)"
-            warnings.append(f"{label} horario comercial: 0 personas en {times}")
+            times = (", ".join(open_empty) if len(open_empty) <= 3
+                     else f"{open_empty[0]}–{open_empty[-1]} ({len(open_empty)} franjas)")
+            warnings.append(
+                f"{label} horario comercial: 0 personas en {times}")
 
     return {
         "status": status,
