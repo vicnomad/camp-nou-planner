@@ -39,7 +39,9 @@ function getMonday(d: Date) {
   const diff = dt.getDate() - day + (day === 0 ? -6 : 1);
   return new Date(dt.getFullYear(), dt.getMonth(), diff);
 }
-function fmtDate(d: Date) { return d.toISOString().slice(0, 10); }
+function fmtDate(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
 function isoWeek(d: Date): number {
   const dt = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
   dt.setUTCDate(dt.getUTCDate() + 4 - (dt.getUTCDay() || 7));
@@ -136,12 +138,12 @@ export default function GridView({ department, employees, schedule, onSchedule, 
     setLoading(true);
     try {
       const solverEmps = employees.map((emp) => {
-        const vacDays = (emp.absences ?? []).flatMap((a) => Array.isArray(a.days) ? a.days : []);
+        const absences = (emp.absences ?? []).filter(a => Array.isArray(a.days) && a.days.length > 0);
         return {
           id: emp.id, name: emp.name, weekly_hours: emp.weekly_hours,
           availability: emp.availability,
           ...(emp.fixed ? { fixed: emp.fixed } : {}),
-          ...(vacDays.length > 0 ? { vacations: vacDays } : {}),
+          ...(absences.length > 0 ? { absences } : {}),
         };
       });
       const payload = {
