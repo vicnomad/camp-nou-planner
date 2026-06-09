@@ -189,9 +189,10 @@ export default function TeamView({
                       <small>{hpd}h/día</small>
                     </td>
                     <td>
-                      <span className={`pill p-${emp.availability}`}>
-                        {AVAIL_OPTIONS.find((a) => a.value === emp.availability)
-                          ?.label ?? emp.availability}
+                      <span className={`pill p-${typeof emp.availability === "string" ? emp.availability : "F"}`}>
+                        {typeof emp.availability === "string"
+                          ? (AVAIL_OPTIONS.find((a) => a.value === emp.availability)?.label ?? emp.availability)
+                          : "Por día"}
                       </span>
                     </td>
                     <td>
@@ -392,26 +393,8 @@ function EmployeeModal({
               </select>
             </div>
           </div>
-          <div className="form-field">
-            <label>Disponibilidad</label>
-            <select
-              className="sel"
-              style={{ width: "100%" }}
-              value={employee.availability ?? "F"}
-              onChange={(e) =>
-                onChange({
-                  ...employee,
-                  availability: e.target.value as Employee["availability"],
-                })
-              }
-            >
-              {AVAIL_OPTIONS.map((a) => (
-                <option key={a.value} value={a.value}>
-                  {a.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          <AvailabilityEditor availability={employee.availability ?? "F"}
+            onChange={(av) => onChange({ ...employee, availability: av })} />
           <div className="form-field">
             <label style={{ display: "flex", alignItems: "center", gap: 10 }}>
               Horario fijo
@@ -504,7 +487,7 @@ function EmployeeModal({
                 <label>Disponibilidad</label>
                 <select className="sel" style={{ width: "100%" }} value={ov.availability ?? ""}
                   onChange={e => setOv({ ...ov, availability: (e.target.value || undefined) as WeekOverride["availability"] })}>
-                  <option value="">= Base ({employee.availability})</option>
+                  <option value="">= Base ({typeof employee.availability === "string" ? employee.availability : "por día"})</option>
                   <option value="M">Mañana</option><option value="T">Tarde</option><option value="F">Completa</option>
                 </select>
               </div>
@@ -540,6 +523,85 @@ function EmployeeModal({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ---------- Availability Editor (simple + per-day) ---------- */
+const AV_OPTS = [
+  { v: "M", l: "Mañana", c: "#fde6c7" },
+  { v: "T", l: "Tarde", c: "#dbe7fb" },
+  { v: "F", l: "Completa", c: "#d8f1e7" },
+  { v: "X", l: "—", c: "#f0f0f0" },
+] as const;
+const DAY_KEYS_LO = ["mon","tue","wed","thu","fri","sat","sun"] as const;
+const DAY_LABELS_SHORT = ["L","M","X","J","V","S","D"];
+
+function AvailabilityEditor({ availability, onChange }: {
+  availability: Employee["availability"];
+  onChange: (av: Employee["availability"]) => void;
+}) {
+  const isPerDay = typeof availability === "object";
+  const simpleVal = isPerDay ? "F" : (availability as string);
+  const [expanded, setExpanded] = useState(isPerDay);
+
+  const perDay: Record<string, string> = isPerDay
+    ? (availability as Record<string, string>)
+    : Object.fromEntries(DAY_KEYS_LO.map(d => [d, simpleVal]));
+
+  function setSimple(v: string) {
+    onChange(v as Employee["availability"]);
+    setExpanded(false);
+  }
+
+  function setDay(day: string, v: string) {
+    const next = { ...perDay, [day]: v };
+    // If all the same, collapse to simple
+    const vals = new Set(Object.values(next));
+    if (vals.size === 1 && !vals.has("X")) {
+      onChange([...vals][0] as Employee["availability"]);
+    } else {
+      onChange(next as unknown as Employee["availability"]);
+    }
+  }
+
+  return (
+    <div className="form-field">
+      <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        Disponibilidad
+        {isPerDay && <span style={{ width: 6, height: 6, borderRadius: 3, background: "#d4940a" }} title="Modo por día" />}
+      </label>
+      {!expanded && (
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <select className="sel" style={{ width: "100%" }} value={simpleVal}
+            onChange={e => setSimple(e.target.value)}>
+            {AV_OPTS.filter(a => a.v !== "X").map(a => (
+              <option key={a.v} value={a.v}>{a.l}</option>
+            ))}
+          </select>
+        </div>
+      )}
+      <button onClick={() => setExpanded(!expanded)} style={{
+        border: "none", background: "none", cursor: "pointer", fontSize: 11,
+        color: "var(--blau-bright)", fontWeight: 500, padding: "4px 0", marginTop: 2,
+      }}>{expanded ? "▾ Simplificar" : "▸ Disponibilidad por día"}</button>
+      {expanded && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginTop: 4 }}>
+          {DAY_KEYS_LO.map((dk, i) => {
+            const val = perDay[dk] ?? "F";
+            const opt = AV_OPTS.find(a => a.v === val);
+            return (
+              <div key={dk} style={{ textAlign: "center" }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "var(--ink-3)", marginBottom: 3 }}>{DAY_LABELS_SHORT[i]}</div>
+                <select className="sel" style={{ width: "100%", fontSize: 11, padding: "3px 4px", background: opt?.c ?? "#fff" }}
+                  value={val} onChange={e => setDay(dk, e.target.value)}>
+                  {AV_OPTS.map(a => <option key={a.v} value={a.v}>{a.v === "X" ? "—" : a.v}</option>)}
+                </select>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

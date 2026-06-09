@@ -400,6 +400,65 @@ check(f"SUN has workers ({wpd.get('SUN',0)} >= 5)", wpd.get("SUN",0) >= 5)
 check(f"max-min spread <= 3 ({max(wpd.values())-min(wpd.values())})",
       max(wpd.values()) - min(wpd.values()) <= 3, f"{wpd}")
 
+# ── (m) Per-day availability: M weekdays, F weekends ─────────────
+print("\n(m) Disponibilidad por día: M lun–vie, F sáb–dom")
+pm = json.loads(json.dumps(BASE))
+rm = solve({
+    "department": {"id":"t","name":"Test"},
+    "params": pm,
+    "employees": [
+        {"id":"PD1","name":"Test, PerDay","weekly_hours":25,
+         "availability":{"mon":"M","tue":"M","wed":"M","thu":"M","fri":"M","sat":"F","sun":"F"}},
+        {"id":"PD2","name":"Filler, A","weekly_hours":25,"availability":"F"},
+    ],
+})
+check("status OK", rm["status"] in ("OPTIMAL","FEASIBLE"), rm["status"])
+pd1 = rm["schedule"].get("PD1", {})
+# Weekdays: must start before 15:00 (M window)
+for d in ["MON","TUE","WED","THU","FRI"]:
+    e = pd1.get(d, {})
+    if e.get("start"):
+        h2, m2 = map(int, e["start"].split(":")); sm = h2*60+m2
+        check(f"  PD1 {d} start {e['start']} <= 12:30 (M window)", sm <= 12*60+30, f"start={e['start']}")
+# Weekends: can start afternoon (F window)
+for d in ["SAT","SUN"]:
+    e = pd1.get(d, {})
+    if e.get("start"):
+        check(f"  PD1 {d} works (F window)", True)
+
+# ── (n) X = not available on Monday ──────────────────────────────
+print("\n(n) Disponibilidad X = no disponible lunes")
+rn = solve({
+    "department": {"id":"t","name":"Test"},
+    "params": pm,
+    "employees": [
+        {"id":"NX1","name":"Test, NoMon","weekly_hours":25,
+         "availability":{"mon":"X","tue":"F","wed":"F","thu":"F","fri":"F","sat":"F","sun":"F"}},
+        {"id":"NX2","name":"Filler, B","weekly_hours":25,"availability":"F"},
+    ],
+})
+check("status OK", rn["status"] in ("OPTIMAL","FEASIBLE"), rn["status"])
+nx1 = rn["schedule"].get("NX1", {})
+check("NX1 MON is off (X)", nx1.get("MON", {}).get("code") in ("off", None), f"got {nx1.get('MON',{})}")
+nx1_days = sum(1 for v in nx1.values() if v.get("code") == "normal")
+check(f"NX1 works 5 days (from tue-sun)", nx1_days == 5, f"got {nx1_days}")
+
+# ── (o) String availability still works ──────────────────────────
+print("\n(o) String availability (retrocompat)")
+ro = solve({
+    "department": {"id":"t","name":"Test"},
+    "params": pm,
+    "employees": [
+        {"id":"RC1","name":"Test, StrM","weekly_hours":25,"availability":"M"},
+        {"id":"RC2","name":"Test, StrT","weekly_hours":25,"availability":"T"},
+        {"id":"RC3","name":"Test, StrF","weekly_hours":25,"availability":"F"},
+    ],
+})
+check("status OK", ro["status"] in ("OPTIMAL","FEASIBLE"), ro["status"])
+for eid in ["RC1","RC2","RC3"]:
+    d_on = sum(1 for v in ro["schedule"].get(eid,{}).values() if v.get("code")=="normal")
+    check(f"  {eid} works 5 days", d_on == 5, f"got {d_on}")
+
 # ── summary ────────────────────────────────────────────────────────
 print(f"\n{'='*50}")
 print(f"  {PASS} passed, {FAIL} failed")

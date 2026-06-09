@@ -36,6 +36,31 @@ def _tm(t):
 def _hm(m):
     return f"{(m // 60) % 24:02d}:{m % 60:02d}"
 
+# Map day key to lowercase for per-day availability maps
+_DAY_LO = {"MON":"mon","TUE":"tue","WED":"wed","THU":"thu","FRI":"fri","SAT":"sat","SUN":"sun"}
+
+def _av_for_day(av, d):
+    """Return availability code for a specific day.
+    av: string "M"|"T"|"F" (all days) OR dict {mon,tue,...} with per-day values.
+    Returns "M","T","F", or "X" (not available).
+    """
+    if isinstance(av, str):
+        return av
+    if isinstance(av, dict):
+        return av.get(_DAY_LO.get(d, d.lower()), "F")
+    return "F"
+
+def _av_window(av_code, dc):
+    """Return (lo_minutes, hi_minutes) for an availability code on a given day config."""
+    if av_code == "M":
+        return 7*60, 15*60
+    elif av_code == "T":
+        return 14*60, dc["base"] + dc["N"]*30
+    elif av_code == "X":
+        return 0, 0  # not available
+    else:  # F or anything else
+        return dc["base"], dc["base"] + dc["N"]*30
+
 
 def solve(data):
     # ── keep raw request for debug ──────────────────────────────────
@@ -154,16 +179,15 @@ def solve(data):
         infeasible_reasons = []
         for d in DAYS:
             if DC[d] is None:
-                continue                       # closed day
+                continue
             if d in abs_days or fixed.get(d) == "off":
                 continue
             dc = DC[d]
-            if av == "M":
-                lo, hi = 7*60, 15*60
-            elif av == "T":
-                lo, hi = 14*60, dc["base"] + dc["N"]*30
-            else:
-                lo, hi = dc["base"], dc["base"] + dc["N"]*30
+            av_d = _av_for_day(av, d)
+            if av_d == "X":
+                infeasible_reasons.append(f"{DAY_ES.get(d,d)}: no disponible (X)")
+                continue
+            lo, hi = _av_window(av_d, dc)
             sl = max(0, s4(d, lo)); sh2 = s4(d, hi)
             ea = max(sl, 0); la = min(sh2, dc["N"]) - L
             if d in fixed and fixed[d] != "off":
@@ -174,7 +198,7 @@ def solve(data):
             else:
                 wh = max(0, min(hi, dc["base"]+dc["N"]*30) - max(lo, dc["base"])) / 60
                 infeasible_reasons.append(
-                    f"{DAY_ES.get(d,d)}: ventana {av}={wh:.1f}h < jornada {hpd}h")
+                    f"{DAY_ES.get(d,d)}: ventana {av_d}={wh:.1f}h < jornada {hpd}h")
 
         td = min(contract_td, feasible_days)
         if td < contract_td:
@@ -204,12 +228,10 @@ def solve(data):
             if DC[d] is None or d in ei["abs"] or ei["fix"].get(d) == "off":
                 W[i][d] = None; X[i][d] = {}; continue
             dc = DC[d]
-            if ei["av"] == "M":
-                lo, hi = 7*60, 15*60
-            elif ei["av"] == "T":
-                lo, hi = 14*60, dc["base"] + dc["N"]*30
-            else:
-                lo, hi = dc["base"], dc["base"] + dc["N"]*30
+            av_d = _av_for_day(ei["av"], d)
+            if av_d == "X":
+                W[i][d] = None; X[i][d] = {}; continue
+            lo, hi = _av_window(av_d, dc)
             sl = max(0, s4(d, lo)); sh2 = s4(d, hi)
             ea = max(sl, 0); la = min(sh2, dc["N"]) - ei["L"]
             if d in ei["fix"] and ei["fix"][d] != "off":

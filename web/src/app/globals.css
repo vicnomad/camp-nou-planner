@@ -88,12 +88,12 @@ body{font-family:'Hanken Grotesk',sans-serif;background:var(--canvas);color:var(
 .grow{display:flex;align-items:stretch;border-bottom:1px solid var(--line-2);height:42px}
 .gmeta{position:sticky;left:0;z-index:5;background:var(--paper);display:flex;align-items:center;border-right:2px solid var(--line)}
 .c-obs{flex:0 0 16px}
-.c-name{flex:0 0 220px;padding:0 10px;display:flex;align-items:center;gap:8px;overflow:hidden}
+.c-name{flex:0 0 260px;padding:0 10px;display:flex;align-items:center;gap:8px;overflow:hidden}
 .c-base{flex:0 0 46px;text-align:center;border-left:1px solid var(--line-2)}
 .c-ent{flex:0 0 56px;text-align:center;border-left:1px solid var(--line-2)}
 .c-tot{flex:0 0 46px;text-align:center;border-left:1px solid var(--line-2)}
 .avmini{width:25px;height:25px;border-radius:7px;flex:0 0 25px;display:grid;place-items:center;color:#fff;font-size:9.5px;font-weight:700;font-family:'Archivo'}
-.nm b{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:160px}
+.nm b{font-size:12px;font-weight:600;display:block;max-width:200px;line-height:1.2}
 .nm span{font-size:9.5px;display:flex;align-items:center;gap:4px}
 .pill{font-size:8.5px;font-weight:700;padding:1px 4px;border-radius:4px}
 .p-M{background:#fde6c7;color:#8a5e00}.p-T{background:#dbe7fb;color:#1e4f93}.p-F{background:#d8f1e7;color:#0f6e4f}

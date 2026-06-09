@@ -322,7 +322,7 @@ function DayGrid({day,params,storeHours,employees,allEmployees,inactiveIds,weekO
               <div className="c-obs">{hasOverride&&<span style={{display:"inline-block",width:6,height:6,borderRadius:3,background:"#d4940a",marginLeft:4}}/>}</div>
               <div className="c-name">
                 <div className="avmini" style={{background:inactive?"#bbb":color}}>{initials(emp.name)}</div>
-                <div className="nm"><b>{emp.name}</b><span><span className={`pill p-${emp.availability}`}>{emp.availability}</span>{emp.fixed&&<svg className="lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>}</span></div>
+                <div className="nm"><b>{emp.name}</b><span>{(() => { const av = emp.availability; const label = typeof av === "string" ? av : "⋯"; const cls = typeof av === "string" ? av : "F"; return <span className={`pill p-${cls}`}>{label}</span>; })()}{emp.fixed&&<svg className="lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>}</span></div>
               </div>
               <div className="c-base"><b>{emp.weekly_hours}</b><small>{hpd}h/d</small></div>
               <div className="c-ent">{inactive?"INACT":isWorking?entry?.start:isVac?(entry?.code??"AUS").toUpperCase().slice(0,3):"—"}</div>
