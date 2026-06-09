@@ -149,6 +149,7 @@ export default function Sidebar({
           ["grid", "Cuadrícula", <><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v16"/></>],
           ["team", "Equipo", <><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0M16 5.5a3 3 0 0 1 0 5.8M20.5 19a4.8 4.8 0 0 0-3.4-4.6"/></>],
           ["params", "Parámetros", <><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.4 1a7 7 0 0 0-2-1.2l-.4-2.5h-4l-.4 2.5a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.5A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.5 2 3.4 2.4-1a7 7 0 0 0 2 1.2l.4 2.5h4l.4-2.5a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.5c.1-.4.1-.8.1-1.2Z"/></>],
+          ["billing", "Facturación", <><path d="M12 2v20M17 6a4 4 0 0 0-4-2H10a3 3 0 0 0 0 6h4a3 3 0 0 1 0 6h-3a4 4 0 0 1-4-2"/></>],
         ] as [ViewId, string, React.ReactNode][]).map(([id, label, paths]) => (
           <a key={id} className={view === id ? "on" : ""} onClick={() => onViewChange(id)}>
             <svg className="ico" viewBox="0 0 24 24">{paths}</svg> {label}

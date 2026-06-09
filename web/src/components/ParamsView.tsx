@@ -365,30 +365,10 @@ export default function ParamsView({ department, onUpdateParams }: Props) {
             ))}
           </div>
 
-          {/* ── BILLING + CAJAS: shared store-level fields ── */}
-          {(demandMode === "billing" || demandMode === "cajas") && (<>
+          {/* ── Curva horaria — visible for billing & cajas ── */}
+          {(demandMode === "billing" || demandMode === "cajas") && (
             <div className="field">
-              <label>Facturación diaria de TIENDA <span className="hint">Venta real del día en € (ej. 9.000) — compartida</span></label>
-              <div className="import" onClick={()=>fileRef.current?.click()}>
-                <svg viewBox="0 0 24 24"><path d="M12 16V4m0 0 4 4m-4-4-4 4M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
-                <div><b>Importar mes desde Excel</b><small>arrastra el .xlsx</small></div>
-                <span className="impbtn">Subir</span>
-              </div>
-              <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{display:"none"}} onChange={handleExcelImport}/>
-              <div className="bill-days">
-                {DAYS_KEYS.map(d=>{const val=params.billing?.daily?.[d]??0;const hi=val>1000000;return(
-                  <div key={d} className="bd" style={hi?{borderColor:"var(--bad)",background:"#fef0f0"}:{}}>
-                    <label>{d}</label><div className="eur"><input value={val||""} onChange={e=>setBillingDaily(d,+e.target.value||0)} type="number" placeholder="0"/><span>€</span></div>
-                    {hi&&<div style={{fontSize:8,color:"var(--bad)",marginTop:2}}>¿Seguro?</div>}
-                  </div>);})}
-              </div>
-              {Object.values(params.billing?.daily??{}).some(v=>(v as number)>1000000)&&(
-                <div style={{fontSize:11,color:"var(--bad)",marginTop:6,fontWeight:500}}>⚠ Algún valor supera 1M€/día</div>)}
-            </div>
-
-            {/* Curva horaria — ALWAYS visible for billing & cajas */}
-            <div className="field">
-              <label>Curva horaria <span className="hint">(% de venta por franja — nivel tienda, compartida)</span></label>
+              <label>Curva horaria <span className="hint">(% de venta por franja — nivel tienda)</span></label>
               <div className="profiles">
                 <button className={`prof ${profile==="normal"?"active":""}`} onClick={()=>setProfile("normal")}>Normal</button>
                 <button className={`prof ${profile==="match"?"active":""}`} onClick={()=>setProfile("match")}>Partido ⚽</button>
@@ -396,29 +376,7 @@ export default function ParamsView({ department, onUpdateParams }: Props) {
               </div>
               <div className="pctgrid">{profileHours.map(hr=>(<div key={hr} className="pctchip"><span>{hr}h</span><input type="number" value={currentProfile[String(hr)]??0} onChange={e=>setProfilePct(String(hr),+e.target.value||0)}/><i>%</i></div>))}</div>
               <div className="chartbox"><div className="chart">{profileHours.map(hr=>{const pct=currentProfile[String(hr)]??0;return <div key={hr} className="col"><div className="rev" style={{height:`${(pct/maxPct)*100}%`}}/><div className="hl">{hr}h</div></div>;})}</div><div className="chleg"><span><span className="s1"/> Venta</span><span><span className="s2"/> Personas</span></div></div>
-              <div style={{fontSize:10,color:"var(--ink-3)",marginTop:6}}>El 0% en una hora = sin venta → demanda ~0 en esa franja. Admite decimales. Mantén el total ~100%.</div>
-            </div>
-          </>)}
-
-          {/* ── FACTURACIÓN-specific ── */}
-          {demandMode === "billing" && (
-            <div style={{display:"flex",gap:12,marginBottom:14}}>
-              <div className="field" style={{flex:1}}>
-                <label>% facturación de este dpto <span className="hint">(del total tienda)</span></label>
-                <div style={{display:"flex",alignItems:"center",gap:4}}>
-                  <input className="eurinput" type="number" value={params.billing_pct??15}
-                    onChange={e=>update(p=>({...p,billing_pct:+e.target.value||0}))} style={{width:60}}/>
-                  <span style={{fontSize:12,color:"var(--ink-3)"}}>%</span>
-                </div>
-              </div>
-              <div className="field" style={{flex:1}}>
-                <label>Productividad <span className="hint">(€/persona·hora)</span></label>
-                <div style={{display:"flex",alignItems:"center",gap:4}}>
-                  <input className="eurinput" type="number" value={params.billing?.productivity_eur_per_person_hour??420}
-                    onChange={e=>setProductivity(+e.target.value||420)} style={{width:70}}/>
-                  <small style={{color:"var(--ink-3)",fontSize:10}}>Súbela si sobra · Bájala si falta</small>
-                </div>
-              </div>
+              <div style={{fontSize:10,color:"var(--ink-3)",marginTop:6}}>Mantén el total ~100%. La facturación y el % se editan en la pestaña Facturación.</div>
             </div>
           )}
 

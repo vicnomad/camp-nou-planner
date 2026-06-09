@@ -12,8 +12,9 @@ import Sidebar from "@/components/Sidebar";
 import TeamView from "@/components/TeamView";
 import ParamsView from "@/components/ParamsView";
 import GridView from "@/components/GridView";
+import BillingView from "@/components/BillingView";
 
-export type ViewId = "grid" | "team" | "params";
+export type ViewId = "grid" | "team" | "params" | "billing";
 
 export interface WeekOverride {
   weekly_hours?: number;
@@ -177,12 +178,13 @@ export default function Home() {
         </div>
 
         <div className="viewtabs">
-          {(["grid", "team", "params"] as const).map((v) => (
+          {(["grid", "team", "params", "billing"] as const).map((v) => (
             <div key={v} className={`vtab ${view === v ? "active" : ""}`} onClick={() => setView(v)}>
               {v === "grid" && <svg className="ico" viewBox="0 0 24 24" style={{width:15,height:15}}><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v16"/></svg>}
               {v === "team" && <svg className="ico" viewBox="0 0 24 24" style={{width:15,height:15}}><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0M16 5.5a3 3 0 0 1 0 5.8"/></svg>}
               {v === "params" && <svg className="ico" viewBox="0 0 24 24" style={{width:15,height:15}}><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7ZM12 2v3M12 19v3M5 12H2M22 12h-3"/></svg>}
-              {" "}{v === "grid" ? "Cuadrícula" : v === "team" ? "Equipo" : "Parámetros"}
+              {v === "billing" && <svg className="ico" viewBox="0 0 24 24" style={{width:15,height:15}}><path d="M12 2v20M17 6a4 4 0 0 0-4-2H10a3 3 0 0 0 0 6h4a3 3 0 0 1 0 6h-3a4 4 0 0 1-4-2"/></svg>}
+              {" "}{v === "grid" ? "Cuadrícula" : v === "team" ? "Equipo" : v === "params" ? "Parámetros" : "Facturación"}
             </div>
           ))}
         </div>
@@ -207,6 +209,9 @@ export default function Home() {
           )}
           {view === "params" && currentDept && (
             <ParamsView department={currentDept} onUpdateParams={updateParams} />
+          )}
+          {view === "billing" && (
+            <BillingView departments={departments} weekMonday={weekMonday} showToast={showToast} />
           )}
         </div>
       </div>
