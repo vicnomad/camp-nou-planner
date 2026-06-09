@@ -362,6 +362,44 @@ for eid in ["B1","B2","B3"]:
         # Just check it's not the full 13h range (780min)
         check(f"  {eid} start spread {spread}min < 780min", spread < 780, f"spread={spread}")
 
+# ── (l) Surplus staff: contract hours MUST be fulfilled ──────────
+print("\n(l) Sobreplantilla — 9 personas, demanda pico 3, TODOS hacen sus horas")
+pl = json.loads(json.dumps(BASE))
+for d in DAYS: pl["billing"]["daily"][d] = 9000
+# Peak target at hour 11: 9000*13/100/420 ≈ 2.8 → 3
+r_l = solve({
+    "department": {"id":"t","name":"Test"},
+    "params": pl,
+    "employees": [
+        {"id":"S1","name":"Emp, A","weekly_hours":25,"availability":"M"},
+        {"id":"S2","name":"Emp, B","weekly_hours":25,"availability":"M"},
+        {"id":"S3","name":"Emp, C","weekly_hours":25,"availability":"M"},
+        {"id":"S4","name":"Emp, D","weekly_hours":25,"availability":"T"},
+        {"id":"S5","name":"Emp, E","weekly_hours":25,"availability":"T"},
+        {"id":"S6","name":"Emp, F","weekly_hours":25,"availability":"T"},
+        {"id":"S7","name":"Emp, G","weekly_hours":25,"availability":"F"},
+        {"id":"S8","name":"Emp, H","weekly_hours":25,"availability":"F"},
+        {"id":"S9","name":"Emp, I","weekly_hours":25,"availability":"F"},
+    ],
+})
+check("status OK", r_l["status"] in ("OPTIMAL","FEASIBLE"), r_l["status"])
+# EVERY employee must work their full 5 days — contract trumps demand
+all_full = True
+for eid in [f"S{i}" for i in range(1,10)]:
+    days_on = sum(1 for v in r_l["schedule"].get(eid,{}).values() if v.get("code")=="normal")
+    if days_on < 5:
+        check(f"  {eid} works 5 days", False, f"got {days_on}")
+        all_full = False
+check("ALL 9 employees work 5 days (contract fulfilled)", all_full)
+# Workers per day should be spread (not all on weekdays, empty weekends)
+wpd = {}
+for d in DAYS:
+    wpd[d] = sum(1 for e in r_l["schedule"] if r_l["schedule"][e].get(d,{}).get("code")=="normal")
+check(f"SAT has workers ({wpd.get('SAT',0)} >= 5)", wpd.get("SAT",0) >= 5)
+check(f"SUN has workers ({wpd.get('SUN',0)} >= 5)", wpd.get("SUN",0) >= 5)
+check(f"max-min spread <= 3 ({max(wpd.values())-min(wpd.values())})",
+      max(wpd.values()) - min(wpd.values()) <= 3, f"{wpd}")
+
 # ── summary ────────────────────────────────────────────────────────
 print(f"\n{'='*50}")
 print(f"  {PASS} passed, {FAIL} failed")

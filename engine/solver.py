@@ -20,8 +20,13 @@ DAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
 DAY_ES = {"MON": "Lunes", "TUE": "Martes", "WED": "Miércoles",
           "THU": "Jueves", "FRI": "Viernes", "SAT": "Sábado", "SUN": "Domingo"}
 
-WU_BAND = 6; WO_BAND = 2; WU_DEM = 4; WO_DEM = 1; W_DAY_SHORT = 10
-W_STAB = 3   # shift-time stability (per slot deviation from center)
+# Contract hours = TOP PRIORITY. Demand only shapes placement, never cuts hours.
+W_CONTRACT = 100  # missing a contract day (very high)
+WU_DEM     = 3    # under demand target (shapes where to place people)
+WO_DEM_SQ  = 1    # over demand (quadratic, just distributes excess evenly)
+WU_BAND    = 5    # under montaje/cierre min
+WO_BAND_SQ = 1    # over montaje/cierre max (quadratic)
+W_STAB     = 2    # shift-time stability
 
 
 def _tm(t):
@@ -292,82 +297,84 @@ def solve(data):
             COV[d][s] = cv
 
     # ── objective ───────────────────────────────────────────────────
+    # PRINCIPLE: contract hours = top priority. Demand shapes placement only.
     obj = []
 
-    # (1) Day-shortfall: penalize working fewer than target days
+    # (1) CONTRACT HOURS — highest priority: penalize missing any contract day
     for i, ei in enumerate(EI):
         ww = [W[i][d] for d in DAYS if W[i][d] is not None]
         if ww and ei["td"] > 0:
             short = mdl.new_int_var(0, 7, f"ds{i}")
             mdl.add(short + sum(ww) >= ei["td"])
-            obj.append(W_DAY_SHORT * short)
+            obj.append(W_CONTRACT * short)
 
-    # (2) Coverage soft constraints — under linear, over CONVEX (o²)
-    def soft(cv, lo, hi, wu, wo, tag):
+    # (2) Coverage: under = shapes placement, over = distributes (convex, very low)
+    def soft_cov(cv, lo, wu_under, wo_sq, tag):
+        """Under-coverage: linear penalty. Over-coverage: quadratic, very low."""
         u_max = max(lo, n, 1)
-        o_max = max(n, 1)
         u = mdl.new_int_var(0, u_max, f"u_{tag}")
-        o = mdl.new_int_var(0, o_max, f"o_{tag}")
         mdl.add(cv + u >= lo)
-        mdl.add(cv - o <= hi)
-        obj.append(wu * u)
-        # Convex over-coverage: o² penalty spreads excess instead of clustering
-        if wo > 0:
-            o_sq = mdl.new_int_var(0, o_max * o_max, f"osq_{tag}")
+        obj.append(wu_under * u)
+        # Convex over: o = max(0, cov - lo), penalty = wo * o²
+        # This distributes surplus evenly without preventing anyone from working
+        o = mdl.new_int_var(0, max(n, 1), f"o_{tag}")
+        mdl.add(cv - o <= lo)
+        if wo_sq > 0:
+            o_sq = mdl.new_int_var(0, n * n, f"osq_{tag}")
             mdl.add_multiplication_equality(o_sq, [o, o])
-            obj.append(wo * o_sq)
+            obj.append(wo_sq * o_sq)
 
     for d in open_days:
         dc = DC[d]
+        # Pre-open (montaje)
         for s in range(0, dc["o"]):
             if s in COV[d]:
-                soft(COV[d][s], pre_lo, pre_hi, WU_BAND, WO_BAND, f"pre{d}{s}")
+                soft_cov(COV[d][s], pre_lo, WU_BAND, WO_BAND_SQ, f"pre{d}{s}")
+        # Open hours (demand)
         for s in range(dc["o"], dc["c"]):
             if s not in COV[d]: continue
             if s in TGT_BAND[d]:
-                lo2, hi2 = TGT_BAND[d][s]
-                soft(COV[d][s], lo2, hi2, WU_BAND, WO_BAND, f"dem{d}{s}")
+                lo2, _ = TGT_BAND[d][s]
+                soft_cov(COV[d][s], lo2, WU_BAND, WO_BAND_SQ, f"dem{d}{s}")
             elif s in TGT[d]:
                 tgt = TGT[d][s]
-                soft(COV[d][s], tgt, tgt + 2, WU_DEM, WO_DEM, f"dem{d}{s}")
+                soft_cov(COV[d][s], tgt, WU_DEM, WO_DEM_SQ, f"dem{d}{s}")
             else:
-                soft(COV[d][s], 1, 99, WU_DEM, WO_DEM, f"dem{d}{s}")
+                soft_cov(COV[d][s], 1, WU_DEM, WO_DEM_SQ, f"dem{d}{s}")
+        # Post-close (cierre)
         for s in range(dc["c"], dc["po"]):
             if s in COV[d]:
-                soft(COV[d][s], post_lo, post_hi, WU_BAND, WO_BAND, f"pst{d}{s}")
+                soft_cov(COV[d][s], post_lo, WU_BAND, WO_BAND_SQ, f"pst{d}{s}")
+        # Extra (inventory)
         if dc["extra"]:
             ex = dc["extra"]
             for s in range(ex["fs"], ex["ts"]):
                 if s in COV[d]:
-                    soft(COV[d][s], ex["lo"], ex["hi"], WU_BAND, WO_BAND, f"ex{d}{s}")
+                    soft_cov(COV[d][s], ex["lo"], WU_BAND, WO_BAND_SQ, f"ex{d}{s}")
 
-    # (3) Day balance: prefer placing workers on high-demand days
+    # (3) Day balance: prefer high-demand days (shapes where offs go)
     daily_demand = {}
     for d in open_days:
         dd = sum(TGT[d].values()) + sum(lo for lo, _ in TGT_BAND[d].values())
-        daily_demand[d] = dd
+        daily_demand[d] = max(dd, 1)
     max_dd = max(daily_demand.values()) if daily_demand else 1
-    if max_dd > 0:
-        for i, ei in enumerate(EI):
-            for d in open_days:
-                if W[i][d] is not None and daily_demand.get(d, 0) > 0:
-                    # Small bonus (negative cost) for working on high-demand days
-                    bonus = int(2 * daily_demand[d] / max_dd)
-                    if bonus > 0:
-                        obj.append(-bonus * W[i][d])
+    for i, ei in enumerate(EI):
+        for d in open_days:
+            if W[i][d] is not None:
+                bonus = int(3 * daily_demand.get(d, 1) / max_dd)
+                if bonus > 0:
+                    obj.append(-bonus * W[i][d])
 
     # (4) Shift stability: prefer start times near availability center
     for i, ei in enumerate(EI):
         for d in open_days:
-            if not X[i][d]:
-                continue
+            if not X[i][d]: continue
             slots = sorted(X[i][d].keys())
-            if not slots:
-                continue
+            if not slots: continue
             center = (slots[0] + slots[-1]) // 2
             for s, bv in X[i][d].items():
                 dist = abs(s - center)
-                if dist > 2:  # 1h tolerance
+                if dist > 2:
                     obj.append(W_STAB * (dist - 2) * bv)
 
     if obj:

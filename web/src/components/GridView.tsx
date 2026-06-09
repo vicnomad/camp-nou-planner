@@ -340,16 +340,25 @@ function DayGrid({day,params,storeHours,employees,allEmployees,inactiveIds,weekO
         );
       })}
 
-      {/* COVERAGE */}
+      {/* ROW 1: PERSONAS (real) — with semaphore vs Aconsejado */}
       <div className="crow">
-        <div className="gmeta"><div className="c-obs"/><div className="c-name">CANT. PERSONAS</div><div className="c-base"/><div className="c-ent" style={{fontSize:9,color:"var(--ink-3)"}}>real/obj</div><div className="c-tot"/><div className="c-compl"/></div>
+        <div className="gmeta"><div className="c-obs"/><div className="c-name" style={{fontSize:10}}>PERSONAS</div><div className="c-base"/><div className="c-ent"/><div className="c-tot"><b>{(() => { let t=0; for(const e of showEmployees){ const en=schedule.schedule?.[e.id]?.[day]; if(en?.code==="normal"&&en.hours) t+=en.hours; } return t; })()}h</b></div><div className="c-compl"><b>{(() => { let w=0; for(const e of showEmployees){ const en=schedule.schedule?.[e.id]?.[day]; if(en?.code==="normal") w++; } return w; })()}</b><small>trab.</small></div></div>
         <div className="cells">{Array.from({length:slotCount},(_,k)=>{
           const m=t0+k*30;const ts=hh(m);const cov=covMap[ts];const open=isOpen(m);const he=(m+30)%60===0;
           const a=cov?.assigned??0;const tgt=cov?.target??0;
           let bg="transparent",col="var(--ink-3)";
           if(open&&tgt>0){if(a<tgt){bg="#fdecec";col="var(--bad)";}else if(a===tgt){bg="#e7f4ee";col="var(--ok)";}else{bg="#fdf0d6";col="var(--gold-deep)";}}
-          else if(a>0&&!open){bg="#f5f7fa";col="var(--ink-3)";}
-          return <div key={k} className={`ccell ${he?"hourend":""}`} style={{background:bg,color:col,fontSize:tgt>0?9.5:11}}>{open&&tgt>0?<><b>{a}</b><span style={{opacity:.5}}>/{tgt}</span></>:(a>0?a:"")}</div>;
+          else if(a>0){bg="#f5f7fa";}
+          return <div key={k} className={`ccell ${he?"hourend":""}`} style={{background:bg,color:col}}>{a>0?a:""}</div>;
+        })}</div>
+      </div>
+      {/* ROW 2: ACONSEJADO (target from billing/productivity) */}
+      <div className="crow" style={{borderTop:"1px solid var(--line-2)",height:32,opacity:.7}}>
+        <div className="gmeta"><div className="c-obs"/><div className="c-name" style={{fontSize:10,color:"var(--ink-3)"}}>ACONSEJADO</div><div className="c-base"/><div className="c-ent"/><div className="c-tot"/><div className="c-compl"/></div>
+        <div className="cells">{Array.from({length:slotCount},(_,k)=>{
+          const m=t0+k*30;const ts=hh(m);const cov=covMap[ts];const open=isOpen(m);const he=(m+30)%60===0;
+          const tgt=cov?.target??0;
+          return <div key={k} className={`ccell ${he?"hourend":""}`} style={{color:"var(--ink-3)",fontSize:10}}>{open&&tgt>0?tgt:""}</div>;
         })}</div>
       </div>
     </div>
