@@ -254,7 +254,7 @@ function recalcCoverage(day:DayKey,sched:SolveResult,employees:Employee[],params
   const t0=preM; const n=Math.ceil((endM-t0)/30); const cov=new Array(n).fill(0);
   for(const emp of employees){const e=sched.schedule?.[emp.id]?.[day];if(!e||e.code!=="normal"||!e.start)continue;const s=tm(e.start);const sl=(e.hours??0)*2;for(let i=0;i<sl;i++){const idx=Math.round((s+i*30-t0)/30);if(idx>=0&&idx<n)cov[idx]++;}}
   const billing=params.billing;const prod=billing?.productivity_eur_per_person_hour??420;const db2=billing?.daily?.[day]??0;const pn=sh.special==="match"?"match":"normal";const prof=billing?.profiles?.[pn]??{};
-  return cov.map((a,k)=>{const m=t0+k*30;const open=m>=openM&&m<closeM;let tgt=0;if(open&&db2>0){const hr=Math.floor(m/60)%24;const pct=prof[String(hr)]??0;tgt=pct>0?Math.max(1,Math.round(db2*pct/100/prod/2)):1;}return{time:hh(m),target:tgt,assigned:a};});
+  return cov.map((a,k)=>{const m=t0+k*30;const open=m>=openM&&m<closeM;let tgt=0;if(open&&db2>0){const hr=Math.floor(m/60)%24;const pct=prof[String(hr)]??0;tgt=pct>0?Math.max(1,Math.round(db2*pct/100/prod)):1;}return{time:hh(m),target:tgt,assigned:a};});
 }
 
 /* DayGrid — with COMPL column, overrides indicators */

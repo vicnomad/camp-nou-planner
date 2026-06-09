@@ -21,6 +21,7 @@ DAY_ES = {"MON": "Lunes", "TUE": "Martes", "WED": "Miércoles",
           "THU": "Jueves", "FRI": "Viernes", "SAT": "Sábado", "SUN": "Domingo"}
 
 WU_BAND = 6; WO_BAND = 2; WU_DEM = 4; WO_DEM = 1; W_DAY_SHORT = 10
+W_STAB = 3   # shift-time stability (per slot deviation from center)
 
 
 def _tm(t):
@@ -120,7 +121,7 @@ def solve(data):
             for s in range(dc["o"], dc["c"]):
                 hr = ((dc["base"] + s*30) // 60) % 24
                 pct = pr.get(str(hr), 0)
-                t = max(1, round(bl * pct / 100 / productivity / 2)) if pct and bl else 1
+                t = max(1, round(bl * pct / 100 / productivity)) if pct and bl else 1
                 TGT[d][s] = t
 
     # ── employees ───────────────────────────────────────────────────
@@ -293,7 +294,7 @@ def solve(data):
     # ── objective ───────────────────────────────────────────────────
     obj = []
 
-    # day-shortfall penalties
+    # (1) Day-shortfall: penalize working fewer than target days
     for i, ei in enumerate(EI):
         ww = [W[i][d] for d in DAYS if W[i][d] is not None]
         if ww and ei["td"] > 0:
@@ -301,16 +302,20 @@ def solve(data):
             mdl.add(short + sum(ww) >= ei["td"])
             obj.append(W_DAY_SHORT * short)
 
+    # (2) Coverage soft constraints — under linear, over CONVEX (o²)
     def soft(cv, lo, hi, wu, wo, tag):
-        # Upper bound for slack must accommodate ANY gap between cov and target.
-        # cov ranges [0, n].  u needs to cover lo - 0 = lo.  o needs to cover n - hi.
         u_max = max(lo, n, 1)
-        o_max = max(n - min(hi, 0), n, 1)
+        o_max = max(n, 1)
         u = mdl.new_int_var(0, u_max, f"u_{tag}")
         o = mdl.new_int_var(0, o_max, f"o_{tag}")
         mdl.add(cv + u >= lo)
         mdl.add(cv - o <= hi)
-        obj.append(wu * u + wo * o)
+        obj.append(wu * u)
+        # Convex over-coverage: o² penalty spreads excess instead of clustering
+        if wo > 0:
+            o_sq = mdl.new_int_var(0, o_max * o_max, f"osq_{tag}")
+            mdl.add_multiplication_equality(o_sq, [o, o])
+            obj.append(wo * o_sq)
 
     for d in open_days:
         dc = DC[d]
@@ -320,15 +325,12 @@ def solve(data):
         for s in range(dc["o"], dc["c"]):
             if s not in COV[d]: continue
             if s in TGT_BAND[d]:
-                # Coverage mode: explicit [lo, hi]
-                lo, hi = TGT_BAND[d][s]
-                soft(COV[d][s], lo, hi, WU_BAND, WO_BAND, f"dem{d}{s}")
+                lo2, hi2 = TGT_BAND[d][s]
+                soft(COV[d][s], lo2, hi2, WU_BAND, WO_BAND, f"dem{d}{s}")
             elif s in TGT[d]:
-                # Billing mode: target ± slack
                 tgt = TGT[d][s]
-                soft(COV[d][s], tgt, tgt+10, WU_DEM, WO_DEM, f"dem{d}{s}")
+                soft(COV[d][s], tgt, tgt + 2, WU_DEM, WO_DEM, f"dem{d}{s}")
             else:
-                # Open slot with no explicit target: at least 1
                 soft(COV[d][s], 1, 99, WU_DEM, WO_DEM, f"dem{d}{s}")
         for s in range(dc["c"], dc["po"]):
             if s in COV[d]:
@@ -338,6 +340,35 @@ def solve(data):
             for s in range(ex["fs"], ex["ts"]):
                 if s in COV[d]:
                     soft(COV[d][s], ex["lo"], ex["hi"], WU_BAND, WO_BAND, f"ex{d}{s}")
+
+    # (3) Day balance: prefer placing workers on high-demand days
+    daily_demand = {}
+    for d in open_days:
+        dd = sum(TGT[d].values()) + sum(lo for lo, _ in TGT_BAND[d].values())
+        daily_demand[d] = dd
+    max_dd = max(daily_demand.values()) if daily_demand else 1
+    if max_dd > 0:
+        for i, ei in enumerate(EI):
+            for d in open_days:
+                if W[i][d] is not None and daily_demand.get(d, 0) > 0:
+                    # Small bonus (negative cost) for working on high-demand days
+                    bonus = int(2 * daily_demand[d] / max_dd)
+                    if bonus > 0:
+                        obj.append(-bonus * W[i][d])
+
+    # (4) Shift stability: prefer start times near availability center
+    for i, ei in enumerate(EI):
+        for d in open_days:
+            if not X[i][d]:
+                continue
+            slots = sorted(X[i][d].keys())
+            if not slots:
+                continue
+            center = (slots[0] + slots[-1]) // 2
+            for s, bv in X[i][d].items():
+                dist = abs(s - center)
+                if dist > 2:  # 1h tolerance
+                    obj.append(W_STAB * (dist - 2) * bv)
 
     if obj:
         mdl.minimize(sum(obj))
