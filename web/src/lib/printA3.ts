@@ -61,7 +61,8 @@ export function printA3(
     const slotW = Math.max(3, (297 - 10 - 82) / slots);
 
     // Build colgroup
-    const cg = `<colgroup><col style="width:42mm"><col style="width:11mm"><col style="width:11mm"><col style="width:9mm"><col style="width:9mm">${'<col style="width:'+slotW.toFixed(2)+'mm">'.repeat(slots)}</colgroup>`;
+    const slotCol = `<col style="width:${slotW.toFixed(2)}mm">`;
+    const cg = `<colgroup><col style="width:42mm"><col style="width:11mm"><col style="width:11mm"><col style="width:9mm"><col style="width:9mm">${slotCol.repeat(slots)}</colgroup>`;
 
     // Hour ruler
     let ruler = `<tr class="ruler"><td colspan="5" class="mr"></td>`;
