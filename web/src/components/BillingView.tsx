@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useRef } from "react";
 import { db } from "@/lib/firebase";
-import { doc, updateDoc, getDoc } from "firebase/firestore";
-import type { Department, SolveResult } from "@/lib/types";
+import { doc, updateDoc, getDoc, collection, getDocs, query, where } from "firebase/firestore";
+import type { Department, Employee, SolveResult } from "@/lib/types";
 import { DAYS_KEYS, DAY_SHORT } from "@/lib/types";
 import { weekIsoId, weekLabel } from "@/lib/week";
 
@@ -15,16 +15,22 @@ interface Props {
 
 export default function BillingView({ departments, weekMonday, showToast }: Props) {
   const [schedules, setSchedules] = useState<Record<string, SolveResult | null>>({});
+  const [deptEmployees, setDeptEmployees] = useState<Record<string, Set<string>>>({});
   const wiso = weekIsoId(weekMonday);
 
   useEffect(() => {
     (async () => {
       const r: Record<string, SolveResult | null> = {};
+      const empSets: Record<string, Set<string>> = {};
       for (const d of departments) {
         const snap = await getDoc(doc(db, "schedules", `${d.id}_${wiso}`));
         r[d.id] = snap.exists() ? snap.data() as SolveResult : null;
+        // Load current employees for this department
+        const empSnap = await getDocs(query(collection(db, "employees"), where("department", "==", d.id)));
+        empSets[d.id] = new Set(empSnap.docs.map(doc => doc.id));
       }
       setSchedules(r);
+      setDeptEmployees(empSets);
     })();
   }, [departments, wiso]);
 
@@ -65,13 +71,14 @@ export default function BillingView({ departments, weekMonday, showToast }: Prop
 
   const weekTotal = DAYS_KEYS.reduce((s, d) => s + (storeBilling[d] ?? 0), 0);
 
-  // Compute per-department
-  function hoursFromSched(sched: SolveResult | null): number {
-    if (!sched?.schedule) return 0;
+  // Compute hours from schedule, counting ONLY employees that currently exist
+  function hoursFromSched(sched: SolveResult | null, currentEmpIds: Set<string>): number {
+    if (!sched?.schedule || currentEmpIds.size === 0) return 0;
     let h = 0;
-    for (const es of Object.values(sched.schedule)) {
+    for (const [empId, days] of Object.entries(sched.schedule)) {
+      if (!currentEmpIds.has(empId)) continue; // skip ghost employees
       for (const d of DAYS_KEYS) {
-        const en = (es as Record<string, { code: string; hours?: number }>)[d];
+        const en = (days as Record<string, { code: string; hours?: number }>)[d];
         if (en?.code === "normal" && en.hours) h += en.hours;
       }
     }
@@ -82,7 +89,8 @@ export default function BillingView({ departments, weekMonday, showToast }: Prop
     const mode = dept.params.demand_mode ?? "billing";
     const pct = dept.params.billing_pct ?? 0;
     const sched = schedules[dept.id];
-    const hours = hoursFromSched(sched);
+    const currentEmps = deptEmployees[dept.id] ?? new Set<string>();
+    const hours = hoursFromSched(sched, currentEmps);
     // hasSched = doc exists AND has at least one working shift
     const hasSched = hours > 0;
     const expected = Math.round(weekTotal * pct / 100);

@@ -3,11 +3,11 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { db } from "@/lib/firebase";
 import {
-  collection, onSnapshot, query, where, doc, updateDoc, getDoc,
+  collection, onSnapshot, query, where, doc, updateDoc, getDoc, deleteDoc,
 } from "firebase/firestore";
 import type { Department, Employee, SolveResult } from "@/lib/types";
 import { DAYS_KEYS } from "@/lib/types";
-import { getMonday, fmtDate, weekIsoId } from "@/lib/week";
+import { getMonday, fmtDate, weekIsoId, isoWeekNumber } from "@/lib/week";
 import { exportCegidXlsx } from "@/lib/exportCegid";
 import Sidebar from "@/components/Sidebar";
 import TeamView from "@/components/TeamView";
@@ -147,6 +147,14 @@ export default function Home() {
             <button className="btn btn-ghost" onClick={() => exportCegidXlsx(currentDept.name, activeEmployees, schedule, weekMonday, dpw)}>
               <svg className="ico" viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" /></svg> Exportar Cegid
             </button>
+          )}
+          {view === "grid" && schedule && weekDocId && (
+            <button className="btn btn-ghost" style={{ color: "var(--bad)" }} onClick={async () => {
+              if (!confirm(`¿Reiniciar el cuadrante de ${currentDept?.name} · Semana ${isoWeekNumber(weekMonday)}?\nSe borrará lo generado.`)) return;
+              await deleteDoc(doc(db, "schedules", weekDocId));
+              setSchedule(null);
+              showToast("Cuadrante reiniciado");
+            }}>Reiniciar</button>
           )}
           {view === "grid" && (
             <button className="btn btn-go" onClick={() => generateRef.current?.()}>
