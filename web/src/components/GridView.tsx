@@ -166,15 +166,6 @@ export default function GridView({ department, employees, allEmployees, weekOver
             </button>
           )}
         </div>
-        <div className="legend">
-          <div className="lg"><span className="lgsw" style={{background:color}}/> Normales</div>
-          <div className="lg"><span className="lgsw" style={{background:"#d4940a"}}/> Complementarias</div>
-          <div className="lg"><span className="lgsw lg-vac"/> Ausencias</div>
-          <div className="lg"><span className="lgsw lg-band"/> Montaje/Cierre</div>
-          <div style={{width:"100%",fontSize:9.5,color:"var(--ink-3)",marginTop:2,lineHeight:1.6}}>
-            <b>DLB</b> día libre · <b>VCN</b> vacaciones · <b>VAA</b> vac. año ant. · <b>FRC</b> festivo recup. · <b>DEC</b> día convenio · <b>BJA</b> baja
-          </div>
-        </div>
         <div className="spacer"/>
         {loading && <span className="spinner" style={{borderColor:"var(--garnet)",borderTopColor:"#fff"}}/>}
         {displaySchedule && (
@@ -188,15 +179,23 @@ export default function GridView({ department, employees, allEmployees, weekOver
       {selectedEmp && (<FichaView empId={selectedEmp} employees={employees} schedule={displaySchedule} department={department} weekMonday={weekMonday} params={params} />)}
 
       {!selectedEmp && mode==="dia" && (<>
-        <div className="days">
-          {DAYS_KEYS.map((d,i)=>(
-            <div key={d} className={`day ${i===dayIdx?"active":""}`} onClick={()=>setDayIdx(i)}>
-              {DAY_SHORT[d]}
-              {events[d]?.type==="match"&&<span className="matchbadge">Partido</span>}
-              {events[d]?.type==="inventory"&&<span className="matchbadge" style={{background:"#e7e0fb",color:"#5b32b0"}}>Invent.</span>}
-              <button onClick={e=>{e.stopPropagation();setEventModal({day:d,event:events[d]??{type:"match"}});}} style={{background:"none",border:"none",cursor:"pointer",fontSize:10,color:"var(--ink-3)",marginLeft:2,padding:0}}>⚙</button>
-            </div>
-          ))}
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14,flexWrap:"wrap"}}>
+          <div className="days" style={{marginBottom:0}}>
+            {DAYS_KEYS.map((d,i)=>(
+              <div key={d} className={`day ${i===dayIdx?"active":""}`} onClick={()=>setDayIdx(i)}>
+                {DAY_SHORT[d]}
+                {events[d]?.type==="match"&&<span className="matchbadge">Partido</span>}
+                {events[d]?.type==="inventory"&&<span className="matchbadge" style={{background:"#e7e0fb",color:"#5b32b0"}}>Invent.</span>}
+                <button onClick={e=>{e.stopPropagation();setEventModal({day:d,event:events[d]??{type:"match"}});}} style={{background:"none",border:"none",cursor:"pointer",fontSize:10,color:"var(--ink-3)",marginLeft:2,padding:0}}>⚙</button>
+              </div>
+            ))}
+          </div>
+          <div style={{marginLeft:"auto",display:"flex",flexWrap:"wrap",gap:8,alignItems:"center",opacity:.7,fontSize:10}}>
+            <span><span className="lgsw" style={{background:color,display:"inline-block",width:12,height:9,borderRadius:3,verticalAlign:"middle",marginRight:3}}/> Norm.</span>
+            <span><span style={{background:"#d4940a",display:"inline-block",width:12,height:9,borderRadius:3,verticalAlign:"middle",marginRight:3}}/> Compl.</span>
+            <span><span className="lgsw lg-vac" style={{display:"inline-block",width:12,height:9,borderRadius:3,verticalAlign:"middle",marginRight:3}}/> Aus.</span>
+            <span style={{color:"var(--ink-3)"}}><b>DLB</b> libre · <b>VCN</b> vac · <b>FRC</b> fest · <b>DEC</b> conv · <b>BJA</b> baja</span>
+          </div>
         </div>
         <div className="card">
           <div className="chead">
