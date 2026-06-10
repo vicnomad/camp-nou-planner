@@ -189,7 +189,13 @@ export default function BillingView({ departments, weekMonday, showToast }: Prop
                         <div style={{ fontFamily: "'Spline Sans Mono'", fontWeight: 600 }}>
                           {r.prodReal !== null ? `${r.prodReal} €/h` : "—"}
                         </div>
-                        {r.mode === "billing" && <div style={{ fontSize: 9, color: "var(--ink-3)" }}>config: {r.prodConfig} €/h</div>}
+                        {r.mode === "billing" && (
+                          <div style={{ display: "flex", alignItems: "center", gap: 2, marginTop: 2 }}>
+                            <input className="num" type="number" style={{ width: 48, fontSize: 9 }} value={r.prodConfig}
+                              onChange={e => updateField(r.dept.id, "params.billing.productivity_eur_per_person_hour", +e.target.value || 420)} />
+                            <span style={{ fontSize: 9, color: "var(--ink-3)" }}>€/h</span>
+                          </div>
+                        )}
                         {r.mode === "cobertura" && <div style={{ fontSize: 9, color: "var(--ink-3)" }}>informativo</div>}
                       </div>
                     )}
