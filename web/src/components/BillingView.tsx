@@ -83,15 +83,16 @@ export default function BillingView({ departments, weekMonday, showToast }: Prop
     const pct = dept.params.billing_pct ?? 0;
     const sched = schedules[dept.id];
     const hours = hoursFromSched(sched);
-    const hasSched = !!sched;
+    // hasSched = doc exists AND has at least one working shift
+    const hasSched = hours > 0;
     const expected = Math.round(weekTotal * pct / 100);
-    const prodReal = hours > 0 && pct > 0 ? Math.round(expected / hours) : null;
+    const prodReal = hasSched && pct > 0 ? Math.round(expected / hours) : null;
 
     // Cajas specifics
     const ticketMedio = dept.params.ticket_medio ?? 25;
     const cpcConfig = dept.params.clients_per_cash_hour ?? 15;
     const transWeek = ticketMedio > 0 ? Math.round(weekTotal / ticketMedio) : 0;
-    const transPerHourReal = hours > 0 ? Math.round(transWeek / hours) : null;
+    const transPerHourReal = hasSched ? Math.round(transWeek / hours) : null;
 
     return { dept, mode, pct, hours, hasSched, expected, prodReal, prodConfig: dept.params.billing?.productivity_eur_per_person_hour ?? 420, ticketMedio, cpcConfig, transWeek, transPerHourReal };
   });
@@ -99,7 +100,8 @@ export default function BillingView({ departments, weekMonday, showToast }: Prop
   const withSales = rows.filter(r => r.pct > 0);
   const noSales = rows.filter(r => r.pct === 0);
   const totalPct = rows.reduce((s, r) => s + r.pct, 0);
-  const totalHours = rows.reduce((s, r) => s + r.hours, 0);
+  const generatedRows = rows.filter(r => r.hasSched);
+  const totalHours = generatedRows.reduce((s, r) => s + r.hours, 0);
   const prodStore = totalHours > 0 ? Math.round(weekTotal / totalHours) : null;
   const missing = rows.filter(r => !r.hasSched).length;
 
