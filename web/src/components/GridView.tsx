@@ -6,6 +6,7 @@ import { doc, setDoc, getDoc } from "firebase/firestore";
 import type { Department, Employee, SolveResult, ScheduleEntry, CoverageSlot, DayKey, StoreHours } from "@/lib/types";
 import { DAYS_KEYS, DAY_LABELS, DAY_SHORT } from "@/lib/types";
 import { weekLabel, shiftWeek, weekIsoId } from "@/lib/week";
+import { printA3 } from "@/lib/printA3";
 import type { WeekOverride } from "@/app/page";
 
 const SOLVER_URL = process.env.NEXT_PUBLIC_SOLVER_URL || "https://camp-nou-engine.vercel.app";
@@ -157,9 +158,11 @@ export default function GridView({ department, employees, allEmployees, weekOver
         </div>
         <div className="spacer"/>
         {loading && <span className="spinner" style={{borderColor:"var(--garnet)",borderTopColor:"#fff"}}/>}
-        <button className="btn btn-ghost" onClick={()=>{setMode("semana");setTimeout(()=>window.print(),300);}}>
-          <svg className="ico" viewBox="0 0 24 24"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-2M6 14h12v7H6Z"/></svg> Imprimir A3
-        </button>
+        {displaySchedule && (
+          <button className="btn btn-ghost" onClick={() => printA3(department, employees, displaySchedule, mergedStoreHours, weekLabel(weekMonday))}>
+            <svg className="ico" viewBox="0 0 24 24"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-2M6 14h12v7H6Z"/></svg> Cuadrante A3
+          </button>
+        )}
       </div>
 
       {mode==="dia" && (<>
