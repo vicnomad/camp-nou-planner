@@ -151,6 +151,21 @@ export default function GridView({ department, employees, allEmployees, weekOver
           <button className={`gt ${mode==="dia"?"active":""}`} onClick={()=>setMode("dia")}>Por día</button>
           <button className={`gt ${mode==="semana"?"active":""}`} onClick={()=>setMode("semana")}>Semana completa</button>
         </div>
+        {/* Worker selector — inline in toolbar */}
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <select className="sel" value={selectedEmp} onChange={e=>setSelectedEmp(e.target.value)} style={{minWidth:130,fontSize:12}}>
+            <option value="">Todos</option>
+            {employees.map(emp=><option key={emp.id} value={emp.id}>{emp.name}</option>)}
+          </select>
+          {selectedEmp && displaySchedule && (
+            <button className="btn btn-ghost" style={{padding:"5px 8px",fontSize:10}} onClick={()=>{
+              const text = buildFichaText(selectedEmp, employees, displaySchedule, department, weekMonday, params);
+              navigator.clipboard.writeText(text).then(()=>showToast("Copiado ✓"));
+            }}>
+              <svg className="ico" viewBox="0 0 24 24" style={{width:12,height:12}}><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            </button>
+          )}
+        </div>
         <div className="legend">
           <div className="lg"><span className="lgsw" style={{background:color}}/> Normales</div>
           <div className="lg"><span className="lgsw" style={{background:"#d4940a"}}/> Complementarias</div>
@@ -165,23 +180,6 @@ export default function GridView({ department, employees, allEmployees, weekOver
         {displaySchedule && (
           <button className="btn btn-ghost" onClick={() => printA3(department, employees, displaySchedule, mergedStoreHours, weekLabel(weekMonday))}>
             <svg className="ico" viewBox="0 0 24 24"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-2M6 14h12v7H6Z"/></svg> Cuadrante A3
-          </button>
-        )}
-      </div>
-
-      {/* Worker selector */}
-      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
-        <label style={{fontSize:12,fontWeight:600,color:"var(--ink-2)"}}>Trabajador:</label>
-        <select className="sel" value={selectedEmp} onChange={e=>setSelectedEmp(e.target.value)} style={{minWidth:160}}>
-          <option value="">Todos</option>
-          {employees.map(emp=><option key={emp.id} value={emp.id}>{emp.name}</option>)}
-        </select>
-        {selectedEmp && displaySchedule && (
-          <button className="btn btn-ghost" style={{padding:"6px 10px",fontSize:11}} onClick={()=>{
-            const text = buildFichaText(selectedEmp, employees, displaySchedule, department, weekMonday, params);
-            navigator.clipboard.writeText(text).then(()=>showToast("Copiado ✓"));
-          }}>
-            <svg className="ico" viewBox="0 0 24 24" style={{width:13,height:13}}><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copiar
           </button>
         )}
       </div>
