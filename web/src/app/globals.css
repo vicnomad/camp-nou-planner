@@ -32,6 +32,9 @@ body{font-family:'Hanken Grotesk',sans-serif;background:var(--canvas);color:var(
 .dot{width:8px;height:8px;border-radius:3px;flex:0 0 8px}
 .dept .ct{margin-left:auto;font-family:'Spline Sans Mono';font-size:10.5px;color:#7f90b6;background:rgba(255,255,255,.06);padding:1px 6px;border-radius:20px}
 .dept.active .ct{color:var(--gold);background:rgba(255,203,5,.12)}
+.dept .dept-kebab{opacity:0;transition:opacity .15s}
+.dept:hover .dept-kebab,.dept .dept-kebab:focus{opacity:1}
+@media(max-width:768px){.dept .dept-kebab{opacity:.6}}
 .nav{margin-top:auto;padding:12px 11px;position:relative;z-index:1;border-top:1px solid rgba(255,255,255,.07)}
 .nav a{display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:9px;color:#9fb0d2;font-size:13px;font-weight:500;text-decoration:none;cursor:pointer;transition:.15s}
 .nav a:hover{background:rgba(255,255,255,.05);color:#fff}

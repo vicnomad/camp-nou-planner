@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { db } from "@/lib/firebase";
 import { doc, setDoc, deleteDoc, collection, query, where, getDocs, updateDoc } from "firebase/firestore";
 import type { Department, Employee } from "@/lib/types";
@@ -29,20 +29,17 @@ const DEFAULT_PARAMS = {
   preopen: { minutes: 30, min: 2, max: 3 },
   postclose: { minutes: 30, min: 2, max: 3 },
   store_hours: {
-    MON: { open: "08:00", close: "21:00" },
-    TUE: { open: "08:00", close: "21:00" },
-    WED: { open: "08:00", close: "21:00" },
-    THU: { open: "08:00", close: "21:00" },
-    FRI: { open: "08:00", close: "21:00" },
-    SAT: { open: "08:00", close: "21:00" },
+    MON: { open: "08:00", close: "21:00" }, TUE: { open: "08:00", close: "21:00" },
+    WED: { open: "08:00", close: "21:00" }, THU: { open: "08:00", close: "21:00" },
+    FRI: { open: "08:00", close: "21:00" }, SAT: { open: "08:00", close: "21:00" },
     SUN: { open: "09:00", close: "21:00" },
   },
   billing: {
     daily: { MON: 9000, TUE: 9500, WED: 10000, THU: 10000, FRI: 13000, SAT: 16000, SUN: 10000 },
     productivity_eur_per_person_hour: 420,
     profiles: {
-      normal: { "8":3,"9":5,"10":11,"11":13,"12":12,"13":9,"14":7,"15":7,"16":9,"17":11,"18":11,"19":9,"20":5,"21":3 },
-      match: { "8":2,"9":3,"10":6,"11":7,"12":7,"13":6,"14":6,"15":7,"16":8,"17":9,"18":9,"19":10,"20":11,"21":14,"22":14,"23":9 },
+      normal: {"8":3,"9":5,"10":11,"11":13,"12":12,"13":9,"14":7,"15":7,"16":9,"17":11,"18":11,"19":9,"20":5,"21":3},
+      match: {"8":2,"9":3,"10":6,"11":7,"12":7,"13":6,"14":6,"15":7,"16":8,"17":9,"18":9,"19":10,"20":11,"21":14,"22":14,"23":9},
     },
   },
 };
@@ -54,6 +51,17 @@ export default function Sidebar({
   view, onViewChange, collapsed, onToggle, showToast,
 }: Props) {
   const [modal, setModal] = useState<DeptModal>({ open: false, mode: "add", deptId: "", name: "", color: DEPT_COLORS[0] });
+  const [menuOpen, setMenuOpen] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close menu on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(null);
+    }
+    if (menuOpen) document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [menuOpen]);
 
   function openAdd() {
     const usedColors = departments.map(d => d.color);
@@ -62,6 +70,7 @@ export default function Sidebar({
   }
 
   function openEdit(dept: Department) {
+    setMenuOpen(null);
     setModal({ open: true, mode: "edit", deptId: dept.id, name: dept.name, color: dept.color });
   }
 
@@ -69,40 +78,43 @@ export default function Sidebar({
     if (!modal.name.trim()) return;
     if (modal.mode === "add") {
       const id = modal.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_");
-      await setDoc(doc(db, "departments", id), {
-        name: modal.name.trim(),
-        color: modal.color,
-        params: DEFAULT_PARAMS,
-      });
+      await setDoc(doc(db, "departments", id), { name: modal.name.trim(), color: modal.color, params: DEFAULT_PARAMS });
       onSelectDept(id);
       showToast(`Departamento <b>${modal.name}</b> creado`);
     } else {
-      await updateDoc(doc(db, "departments", modal.deptId), {
-        name: modal.name.trim(),
-        color: modal.color,
-      });
+      await updateDoc(doc(db, "departments", modal.deptId), { name: modal.name.trim(), color: modal.color });
       showToast("Departamento actualizado");
     }
     setModal(m => ({ ...m, open: false }));
   }
 
-  async function deleteDept() {
-    if (!modal.deptId) return;
-    const q = query(collection(db, "employees"), where("department", "==", modal.deptId));
-    const snap = await getDocs(q);
-    if (snap.size > 0 && !confirm(`Este departamento tiene ${snap.size} empleado(s). ¿Eliminar igualmente?`)) return;
-    // Delete employees
-    for (const d of snap.docs) await deleteDoc(d.ref);
-    await deleteDoc(doc(db, "departments", modal.deptId));
-    if (currentDeptId === modal.deptId) {
-      const other = departments.find(d => d.id !== modal.deptId);
+  async function handleDelete(dept: Department) {
+    setMenuOpen(null);
+    // Check employees
+    const empQ = query(collection(db, "employees"), where("department", "==", dept.id));
+    const empSnap = await getDocs(empQ);
+    if (empSnap.size > 0) {
+      alert(`No se puede eliminar "${dept.name}": tiene ${empSnap.size} empleado(s) asignados.\nReasígnalos a otro departamento antes de eliminar.`);
+      return;
+    }
+    if (!confirm(`¿Eliminar "${dept.name}"?\n\nSe borrará su configuración y sus cuadrantes guardados.\nNo se puede deshacer.`)) return;
+    // Delete associated data
+    try {
+      // Delete schedules/{dept}_*
+      const schedQ = query(collection(db, "schedules"), where("department", "==", dept.id));
+      const schedSnap = await getDocs(schedQ);
+      for (const d of schedSnap.docs) await deleteDoc(d.ref);
+    } catch { /* schedules may not have the field indexed */ }
+    // Delete department
+    await deleteDoc(doc(db, "departments", dept.id));
+    if (currentDeptId === dept.id) {
+      const other = departments.find(d => d.id !== dept.id);
       if (other) onSelectDept(other.id);
     }
-    setModal(m => ({ ...m, open: false }));
-    showToast("Departamento eliminado");
+    showToast(`Departamento "${dept.name}" eliminado`);
   }
 
-  if (collapsed) return null; // fully hidden; hamburger in top bar
+  if (collapsed) return null;
 
   return (
     <aside className="side">
@@ -127,19 +139,33 @@ export default function Sidebar({
           cursor: "pointer", fontSize: 14, fontWeight: 700,
         }}>+</button>
       </div>
-      <div className="depts">
+      <div className="depts" ref={menuRef}>
         {departments.map((d) => (
-          <div
-            key={d.id}
-            className={`dept ${d.id === currentDeptId ? "active" : ""}`}
-            onClick={() => onSelectDept(d.id)}
-            onDoubleClick={() => openEdit(d)}
-          >
+          <div key={d.id} className={`dept ${d.id === currentDeptId ? "active" : ""}`}
+            onClick={() => { onSelectDept(d.id); setMenuOpen(null); }}
+            style={{ position: "relative" }}>
             <span className="dot" style={{ background: d.color }} />
             {d.name}
-            <span className="ct">
-              {d.id === currentDeptId ? employees.length : ""}
-            </span>
+            <span className="ct">{d.id === currentDeptId ? employees.length : ""}</span>
+            {/* Kebab menu */}
+            <button className="dept-kebab" onClick={(e) => { e.stopPropagation(); setMenuOpen(menuOpen === d.id ? null : d.id); }}
+              style={{
+                position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)",
+                background: "none", border: "none", cursor: "pointer", color: "#7f90b6",
+                fontSize: 14, padding: "2px 4px", borderRadius: 4, letterSpacing: 1,
+                opacity: menuOpen === d.id ? 1 : undefined,
+              }}>⋯</button>
+            {/* Dropdown */}
+            {menuOpen === d.id && (
+              <div style={{
+                position: "absolute", right: 4, top: "100%", zIndex: 30,
+                background: "#1a2a4e", border: "1px solid rgba(255,255,255,.12)",
+                borderRadius: 8, padding: 4, minWidth: 140, boxShadow: "0 8px 24px rgba(0,0,0,.4)",
+              }}>
+                <button style={menuItemStyle} onClick={(e) => { e.stopPropagation(); openEdit(d); }}>Renombrar / color</button>
+                <button style={{ ...menuItemStyle, color: "#f06070" }} onClick={(e) => { e.stopPropagation(); handleDelete(d); }}>Eliminar</button>
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -157,7 +183,7 @@ export default function Sidebar({
         ))}
       </nav>
 
-      {/* DEPARTMENT MODAL */}
+      {/* DEPARTMENT MODAL (create/edit) */}
       {modal.open && (
         <div className="modal-overlay" onClick={() => setModal(m => ({...m, open: false}))}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -184,9 +210,6 @@ export default function Sidebar({
               </div>
             </div>
             <div className="modal-foot">
-              {modal.mode === "edit" && (
-                <button className="btn-danger" onClick={deleteDept}>Eliminar</button>
-              )}
               <div className="spacer" />
               <button className="btn btn-ghost" onClick={() => setModal(m => ({...m, open: false}))}>Cancelar</button>
               <button className="btn btn-go" onClick={saveDept}>{modal.mode === "add" ? "Crear" : "Guardar"}</button>
@@ -197,3 +220,10 @@ export default function Sidebar({
     </aside>
   );
 }
+
+const menuItemStyle: React.CSSProperties = {
+  display: "block", width: "100%", textAlign: "left", border: "none",
+  background: "transparent", color: "#cfd8ec", fontSize: 12, fontWeight: 500,
+  padding: "7px 10px", borderRadius: 6, cursor: "pointer",
+  fontFamily: "inherit",
+};
