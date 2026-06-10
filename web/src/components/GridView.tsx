@@ -278,6 +278,28 @@ function DayGrid({day,params,storeHours,employees,allEmployees,inactiveIds,weekO
   const isOpen=(m:number)=>m>=openM&&m<closeM;
   const isBand=(m:number)=>m<openM||m>=closeM;
   const covMap:Record<string,CoverageSlot>={};(schedule.coverage?.[day]??[]).forEach(c=>{covMap[c.time]=c;});
+
+  // Live ACONSEJADO: computed from current params, not solver snapshot
+  const liveTarget:Record<string,number>={};
+  {
+    const mode2=params.demand_mode??"billing";
+    const billing=params.billing;
+    const prod=billing?.productivity_eur_per_person_hour??420;
+    const profName=sh.special==="match"?"match":"normal";
+    const prof=billing?.profiles?.[profName]??{};
+    if(mode2==="billing"){
+      const storeBill=billing?.daily?.[day]??0;
+      const pct2=params.billing_pct??100;
+      const deptBill=storeBill*pct2/100;
+      for(let m2=openM;m2<closeM;m2+=30){const hr=Math.floor(m2/60)%24;const p=prof[String(hr)]??0;liveTarget[hh(m2)]=(p>0&&deptBill>0)?Math.max(1,Math.round(deptBill*p/100/prod)):1;}
+    }else if(mode2==="cajas"){
+      const storeBill=billing?.daily?.[day]??0;
+      const ticket=params.ticket_medio??25;
+      const cpc=params.clients_per_cash_hour??15;
+      for(let m2=openM;m2<closeM;m2+=30){const hr=Math.floor(m2/60)%24;const p=prof[String(hr)]??0;liveTarget[hh(m2)]=(p>0&&storeBill>0&&ticket>0)?Math.max(1,Math.ceil(storeBill*p/100/ticket/cpc)):0;}
+    }
+    // cobertura: liveTarget stays empty, uses covMap.target as fallback
+  }
   const dragRef=useRef<{empId:string;mode:"move"|"start"|"end";origStart:number;origSlots:number;startX:number}|null>(null);
   const [dragPreview,setDragPreview]=useState<{empId:string;startSlot:number;slots:number}|null>(null);
   function onPD(e:React.PointerEvent,empId:string,ss:number,sl:number,ck:number){e.preventDefault();dragRef.current={empId,origStart:ss,origSlots:sl,mode:ck===ss?"start":ck===ss+sl-1?"end":"move",startX:e.clientX};setDragPreview({empId,startSlot:ss,slots:sl});(e.target as HTMLElement).setPointerCapture(e.pointerId);}
@@ -351,19 +373,20 @@ function DayGrid({day,params,storeHours,employees,allEmployees,inactiveIds,weekO
         <div className="gmeta"><div className="c-obs"/><div className="c-name" style={{fontSize:10}}>PERSONAS</div><div className="c-base"/><div className="c-ent"/><div className="c-tot"><b>{(() => { let t=0; for(const e of showEmployees){ const en=schedule.schedule?.[e.id]?.[day]; if(en?.code==="normal"&&en.hours) t+=en.hours; } return t; })()}h</b></div><div className="c-compl"><b>{(() => { let w=0; for(const e of showEmployees){ const en=schedule.schedule?.[e.id]?.[day]; if(en?.code==="normal") w++; } return w; })()}</b><small>trab.</small></div></div>
         <div className="cells">{Array.from({length:slotCount},(_,k)=>{
           const m=t0+k*30;const ts=hh(m);const cov=covMap[ts];const open=isOpen(m);const he=(m+30)%60===0;
-          const a=cov?.assigned??0;const tgt=cov?.target??0;
+          const a=cov?.assigned??0;
+          const tgt=liveTarget[ts]??covMap[ts]?.target??0; // live first, solver fallback
           let bg="transparent",col="var(--ink-3)";
           if(open&&tgt>0){if(a<tgt){bg="#fdecec";col="var(--bad)";}else if(a===tgt){bg="#e7f4ee";col="var(--ok)";}else{bg="#fdf0d6";col="var(--gold-deep)";}}
           else if(a>0){bg="#f5f7fa";}
           return <div key={k} className={`ccell ${he?"hourend":""}`} style={{background:bg,color:col}}>{a>0?a:""}</div>;
         })}</div>
       </div>
-      {/* ROW 2: ACONSEJADO (target from billing/productivity) */}
+      {/* ROW 2: ACONSEJADO (live from current params) */}
       <div className="crow" style={{borderTop:"1px solid var(--line-2)",height:32,opacity:.7}}>
         <div className="gmeta"><div className="c-obs"/><div className="c-name" style={{fontSize:10,color:"var(--ink-3)"}}>ACONSEJADO</div><div className="c-base"/><div className="c-ent"/><div className="c-tot"/><div className="c-compl"/></div>
         <div className="cells">{Array.from({length:slotCount},(_,k)=>{
-          const m=t0+k*30;const ts=hh(m);const cov=covMap[ts];const open=isOpen(m);const he=(m+30)%60===0;
-          const tgt=cov?.target??0;
+          const m=t0+k*30;const ts=hh(m);const open=isOpen(m);const he=(m+30)%60===0;
+          const tgt=liveTarget[ts]??covMap[ts]?.target??0;
           return <div key={k} className={`ccell ${he?"hourend":""}`} style={{color:"var(--ink-3)",fontSize:10}}>{open&&tgt>0?tgt:""}</div>;
         })}</div>
       </div>
