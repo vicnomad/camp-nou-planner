@@ -29,6 +29,7 @@ export default function GridView({ department, employees, allEmployees, weekOver
   const [mode, setMode] = useState<"dia"|"semana">("dia");
   const [dayIdx, setDayIdx] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [selectedEmp, setSelectedEmp] = useState<string>("");
   const [events, setEvents] = useState<Record<string, WeekEvent>>({});
   const [eventModal, setEventModal] = useState<{day:DayKey;event:WeekEvent}|null>(null);
   const [editedSchedule, setEditedSchedule] = useState<SolveResult|null>(null);
@@ -168,7 +169,27 @@ export default function GridView({ department, employees, allEmployees, weekOver
         )}
       </div>
 
-      {mode==="dia" && (<>
+      {/* Worker selector */}
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+        <label style={{fontSize:12,fontWeight:600,color:"var(--ink-2)"}}>Trabajador:</label>
+        <select className="sel" value={selectedEmp} onChange={e=>setSelectedEmp(e.target.value)} style={{minWidth:160}}>
+          <option value="">Todos</option>
+          {employees.map(emp=><option key={emp.id} value={emp.id}>{emp.name}</option>)}
+        </select>
+        {selectedEmp && displaySchedule && (
+          <button className="btn btn-ghost" style={{padding:"6px 10px",fontSize:11}} onClick={()=>{
+            const text = buildFichaText(selectedEmp, employees, displaySchedule, department, weekMonday, params);
+            navigator.clipboard.writeText(text).then(()=>showToast("Copiado ✓"));
+          }}>
+            <svg className="ico" viewBox="0 0 24 24" style={{width:13,height:13}}><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copiar
+          </button>
+        )}
+      </div>
+
+      {/* Ficha individual */}
+      {selectedEmp && (<FichaView empId={selectedEmp} employees={employees} schedule={displaySchedule} department={department} weekMonday={weekMonday} params={params} />)}
+
+      {!selectedEmp && mode==="dia" && (<>
         <div className="days">
           {DAYS_KEYS.map((d,i)=>(
             <div key={d} className={`day ${i===dayIdx?"active":""}`} onClick={()=>setDayIdx(i)}>
@@ -192,7 +213,7 @@ export default function GridView({ department, employees, allEmployees, weekOver
         </div>
       </>)}
 
-      {mode==="semana" && (<div>
+      {!selectedEmp && mode==="semana" && (<div>
         {displaySchedule ? DAYS_KEYS.map(d=>(
           <div key={d} className="dayblock">
             <h5>{DAY_LABELS[d]} {events[d]?.type==="match"&&<span className="dbtag match">Partido</span>}{events[d]?.type==="inventory"&&<span className="dbtag inv">Inventario</span>}</h5>
@@ -389,6 +410,72 @@ function DayGrid({day,params,storeHours,employees,allEmployees,inactiveIds,weekO
           const tgt=liveTarget[ts]??covMap[ts]?.target??0;
           return <div key={k} className={`ccell ${he?"hourend":""}`} style={{color:"var(--ink-3)",fontSize:10}}>{open&&tgt>0?tgt:""}</div>;
         })}</div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Worker Ficha ── */
+const ABSENCE_LABELS: Record<string,string> = {
+  VCN:"Vacaciones",VAA:"Vacaciones año anterior",FRC:"Festivo recuperado",
+  DEC:"Día de convenio",BJA:"Baja",DLB:"Día libre",vacation:"Vacaciones",
+};
+
+function dayDate(weekMonday2: string, idx: number): string {
+  const d = new Date(weekMonday2+"T00:00:00");
+  d.setDate(d.getDate()+idx);
+  return `${d.getDate()}/${d.getMonth()+1}`;
+}
+
+function fichaLine(entry: ScheduleEntry|undefined, hpd: number): string {
+  if (!entry || entry.code === "off") return "Libre";
+  if (entry.code === "normal" && entry.start && entry.end) {
+    const h = entry.hours ?? hpd;
+    const compl = Math.max(0, h - hpd);
+    return compl > 0 ? `${entry.start} a ${entry.end} (${hpd}h + ${compl}h compl.)` : `${entry.start} a ${entry.end} (${h}h)`;
+  }
+  return ABSENCE_LABELS[entry.code] ?? entry.code.toUpperCase();
+}
+
+function buildFichaText(empId: string, employees: Employee[], sched: SolveResult, dept: Department, weekMon: string, params: Department["params"]): string {
+  const emp = employees.find(e=>e.id===empId);
+  if (!emp) return "";
+  const dpw = params.days_per_week ?? 5;
+  const hpd = emp.weekly_hours / dpw;
+  const lines = [`Horario · ${emp.name} · ${dept.name}`, weekLabel(weekMon), ""];
+  let total = 0;
+  DAYS_KEYS.forEach((d, i) => {
+    const entry = sched?.schedule?.[empId]?.[d];
+    const line = fichaLine(entry, hpd);
+    lines.push(`${DAY_LABELS[d]} ${dayDate(weekMon,i)}: ${line}`);
+    if (entry?.code === "normal" && entry.hours) total += entry.hours;
+  });
+  lines.push("", `Total: ${total}h`);
+  return lines.join("\n");
+}
+
+function FichaView({empId,employees,schedule,department,weekMonday:wm,params}:{empId:string;employees:Employee[];schedule:SolveResult|null;department:Department;weekMonday:string;params:Department["params"]}) {
+  const emp = employees.find(e=>e.id===empId);
+  if (!emp) return null;
+  if (!schedule) return <div className="card cardpad" style={{color:"var(--ink-3)",textAlign:"center",padding:30}}>Genera el cuadrante primero</div>;
+  const dpw = params.days_per_week ?? 5;
+  const hpd = emp.weekly_hours / dpw;
+  let total = 0;
+  return (
+    <div className="card" style={{maxWidth:500}}>
+      <div className="chead"><h3>{emp.name}</h3><span className="sub">{emp.weekly_hours}h/sem · {hpd}h/día</span></div>
+      <div className="cardpad" style={{fontSize:13}}>
+        {DAYS_KEYS.map((d,i) => {
+          const entry = schedule.schedule?.[empId]?.[d];
+          const line = fichaLine(entry, hpd);
+          if (entry?.code === "normal" && entry.hours) total += entry.hours;
+          const isWork = entry?.code === "normal";
+          return <div key={d} style={{display:"flex",gap:10,padding:"5px 0",borderBottom:"1px solid var(--line-2)"}}>
+            <span style={{width:70,fontWeight:600,color:"var(--ink-2)",fontSize:12}}>{DAY_LABELS[d]} {dayDate(wm,i)}</span>
+            <span style={{color: isWork ? "var(--ink)" : "var(--ink-3)", fontWeight: isWork ? 500 : 400}}>{line}</span>
+          </div>;
+        })}
+        <div style={{marginTop:10,fontWeight:700,fontSize:14}}>Total: {total}h</div>
       </div>
     </div>
   );
