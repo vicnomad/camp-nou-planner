@@ -1,190 +1,176 @@
 /**
- * Generate and print an A3 portrait schedule sheet.
- * Opens a new window with the HTML and triggers print dialog.
+ * A3 portrait print sheet — one page per week, per-day axis.
+ * Each day has its OWN time axis (montaje→cierre), filling full width.
  */
-import type { Department, Employee, SolveResult, DayKey, StoreHours } from "./types";
-import { DAYS_KEYS, DAY_LABELS } from "./types";
+import type { Department, Employee, SolveResult, StoreHours } from "./types";
+import { DAYS_KEYS } from "./types";
 
-const DAY_SHORT_ES: Record<string, string> = {
-  MON: "LUN", TUE: "MAR", WED: "MIÉ", THU: "JUE", FRI: "VIE", SAT: "SÁB", SUN: "DOM",
+const DAY_ES: Record<string, string> = {
+  MON:"LUNES",TUE:"MARTES",WED:"MIÉRCOLES",THU:"JUEVES",FRI:"VIERNES",SAT:"SÁBADO",SUN:"DOMINGO"
 };
-
-function tm(t: string) { const [h, m] = t.split(":").map(Number); return h * 60 + m; }
-function hh(m: number) { return `${String(Math.floor(((m % 1440 + 1440) % 1440) / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`; }
+function tm(t:string){const[h,m]=t.split(":").map(Number);return h*60+m}
+function hh(m:number){return`${String(Math.floor(((m%1440+1440)%1440)/60)).padStart(2,"0")}:${String(m%60).padStart(2,"0")}`}
+function esc(s:string){return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
 
 export function printA3(
-  department: Department,
-  employees: Employee[],
-  schedule: SolveResult,
-  storeHours: Record<string, StoreHours>,
-  weekLabel: string,
+  dept: Department, employees: Employee[], sched: SolveResult,
+  storeHours: Record<string,StoreHours>, weekLbl: string,
 ) {
-  const params = department.params;
-  const color = department.color;
-  const preMin = params.preopen?.minutes ?? 30;
-  const postMin = params.postclose?.minutes ?? 30;
-  const dpw = params.days_per_week ?? 5;
+  const p = dept.params;
+  const c = dept.color;
+  const preM = p.preopen?.minutes ?? 30;
+  const postM = p.postclose?.minutes ?? 30;
+  const dpw = p.days_per_week ?? 5;
 
-  // Determine global time range (earliest preopen → latest postclose)
-  let globalStart = 1440, globalEnd = 0;
-  for (const d of DAYS_KEYS) {
-    const sh = storeHours[d];
-    if (!sh?.open || !sh?.close) continue;
-    const o = tm(sh.open);
-    let c = tm(sh.close);
-    if (c <= o) c += 1440;
-    globalStart = Math.min(globalStart, o - preMin);
-    globalEnd = Math.max(globalEnd, c + postMin);
-    if (sh.extra) {
-      let et = tm(sh.extra.to);
-      if (et <= o) et += 1440;
-      globalEnd = Math.max(globalEnd, et);
-    }
-  }
-  // Round to full hours
-  globalStart = Math.floor(globalStart / 60) * 60;
-  globalEnd = Math.ceil(globalEnd / 60) * 60;
-  const totalSlots = (globalEnd - globalStart) / 30;
-  const totalHours = totalSlots / 2;
-
-  // Column widths
-  const dayW = "11mm";
-  const nameW = "46mm";
-  const availW = `${(297 - 5 * 2 - 11 - 46) / totalSlots}mm`; // A3 width - margins - day - name
-
-  // Colgroup
-  const colgroup = `<colgroup><col style="width:${dayW}"><col style="width:${nameW}">${Array(totalSlots).fill(`<col style="width:${availW}">`).join("")}</colgroup>`;
-
-  // Hour ruler
-  let ruler = `<tr class="ruler"><td class="meta-ruler" colspan="2"></td>`;
-  for (let m = globalStart; m < globalEnd; m += 60) {
-    ruler += `<td class="hr" colspan="2">${String(Math.floor(m / 60) % 24).padStart(2, "0")}</td>`;
-  }
-  ruler += `</tr>`;
-
-  // Build day blocks
   const absences: string[] = [];
-  let dayRows = "";
 
+  // Build each day block
+  let blocks = "";
   for (const d of DAYS_KEYS) {
     const sh = storeHours[d];
     if (!sh?.open || !sh?.close) continue;
+    const openM = tm(sh.open);
+    let closeM = tm(sh.close);
+    if (closeM <= openM) closeM += 1440;
+    let dayStart = openM - preM;
+    let dayEnd = closeM + postM;
+    if (sh.extra) { let et = tm(sh.extra.to); if (et <= openM) et += 1440; dayEnd = Math.max(dayEnd, et); }
+    dayStart = Math.floor(dayStart / 30) * 30;
+    dayEnd = Math.ceil(dayEnd / 30) * 30;
+    const slots = (dayEnd - dayStart) / 30;
+    if (slots <= 0) continue;
 
-    // Collect working employees for this day, sorted by start time
-    const working: { name: string; start: number; end: number; hours: number; baseSlots: number }[] = [];
+    // Collect working employees
+    const rows: {name:string;wh:number;hpd:number;start:number;end:number;hours:number}[] = [];
     for (const emp of employees) {
-      const entry = schedule.schedule?.[emp.id]?.[d];
-      if (!entry) continue;
-      if (entry.code === "normal" && entry.start && entry.end) {
+      const en = sched.schedule?.[emp.id]?.[d];
+      if (!en) continue;
+      if (en.code === "normal" && en.start && en.end) {
         const hpd = emp.weekly_hours / dpw;
-        working.push({
-          name: emp.name,
-          start: tm(entry.start),
-          end: tm(entry.end) <= tm(entry.start) ? tm(entry.end) + 1440 : tm(entry.end),
-          hours: entry.hours ?? hpd,
-          baseSlots: Math.round(hpd * 2),
-        });
-      } else if (entry.code && entry.code !== "off") {
-        absences.push(`${emp.name} (${entry.code.toUpperCase()})`);
+        let endM2 = tm(en.end); if (endM2 <= tm(en.start)) endM2 += 1440;
+        rows.push({name:emp.name, wh:emp.weekly_hours, hpd, start:tm(en.start), end:endM2, hours:en.hours??hpd});
+      } else if (en.code && en.code !== "off") {
+        absences.push(`${emp.name} (${en.code.toUpperCase()})`);
       }
     }
-    working.sort((a, b) => a.start - b.start);
+    rows.sort((a,b) => a.start - b.start);
+    if (rows.length === 0) continue;
 
-    const rowspan = working.length + 1; // employees + count row
+    // Meta column widths (mm): name 42, base 11, entrada 11, norm 9, compl 9 = 82mm
+    // Available for slots: 297 - 10 (margins) - 82 = 205mm / slots
+    const slotW = Math.max(3, (297 - 10 - 82) / slots);
+
+    // Build colgroup
+    const cg = `<colgroup><col style="width:42mm"><col style="width:11mm"><col style="width:11mm"><col style="width:9mm"><col style="width:9mm">${'<col style="width:'+slotW.toFixed(2)+'mm">'.repeat(slots)}</colgroup>`;
+
+    // Hour ruler
+    let ruler = `<tr class="ruler"><td colspan="5" class="mr"></td>`;
+    for (let m = dayStart; m < dayEnd; m += 30) {
+      const isHour = m % 60 === 0;
+      const isBand = m < openM || m >= closeM;
+      if (isHour) {
+        ruler += `<td colspan="2" class="hr${isBand?" band":""}">${hh(m)}</td>`;
+        m += 30; // skip the :30 slot (already in colspan=2)
+        if (m >= dayEnd) break;
+        continue;
+      }
+    }
+    // Simpler approach: iterate by hours
+    ruler = `<tr class="ruler"><td colspan="5" class="mr"></td>`;
+    for (let m = dayStart; m < dayEnd; m += 60) {
+      const isBand = m < openM || m >= closeM;
+      const colsHere = Math.min(2, (dayEnd - m) / 30);
+      ruler += `<td colspan="${colsHere}" class="hr${isBand?" band":""}">${hh(m)}</td>`;
+    }
+    ruler += `</tr>`;
 
     // Employee rows
-    working.forEach((w, idx) => {
-      const startSlot = Math.max(0, Math.round((w.start - globalStart) / 30));
-      const shiftSlots = Math.round((w.end - w.start) / 30);
-      const before = startSlot;
-      const after = totalSlots - startSlot - shiftSlots;
-      const normalSlots = Math.min(shiftSlots, w.baseSlots);
-      const complSlots = Math.max(0, shiftSlots - w.baseSlots);
+    let empRows = "";
+    for (const r of rows) {
+      const s0 = Math.round((r.start - dayStart) / 30);
+      const sl = Math.round((r.end - r.start) / 30);
+      const baseSlots = Math.round(r.hpd * 2);
+      const normSlots = Math.min(sl, baseSlots);
+      const complSlots = Math.max(0, sl - baseSlots);
+      const normH = normSlots / 2;
+      const complH = complSlots / 2;
+      const before = s0;
+      const after = slots - s0 - sl;
 
-      let row = "<tr>";
-      if (idx === 0) {
-        row += `<td class="day" rowspan="${rowspan}">${DAY_SHORT_ES[d] ?? d}</td>`;
-      }
-      row += `<td class="name">${escHtml(w.name)}</td>`;
-      if (before > 0) row += `<td colspan="${before}"></td>`;
-      if (normalSlots > 0) {
-        row += `<td class="bar" colspan="${normalSlots}" style="background:${color}"><span>${hh(w.start)}–${hh(w.end % 1440)}</span></td>`;
-      }
-      if (complSlots > 0) {
-        row += `<td class="bar" colspan="${complSlots}" style="background:#d4940a">${normalSlots === 0 ? `<span>${hh(w.start)}–${hh(w.end % 1440)}</span>` : ""}</td>`;
-      }
-      if (after > 0) row += `<td colspan="${after}"></td>`;
-      row += "</tr>";
-      dayRows += row;
-    });
+      empRows += `<tr>`;
+      empRows += `<td class="name">${esc(r.name)}</td>`;
+      empRows += `<td class="meta mono">${r.wh}·${r.hpd}h</td>`;
+      empRows += `<td class="meta mono">${hh(r.start)}</td>`;
+      empRows += `<td class="meta mono">${normH}h</td>`;
+      empRows += `<td class="meta mono${complH > 0 ? " compl" : ""}">${complH > 0 ? complH + "h" : "—"}</td>`;
+      if (before > 0) empRows += `<td colspan="${before}"></td>`;
+      if (normSlots > 0) empRows += `<td class="bar" colspan="${normSlots}" style="background:${c}"><span>${hh(r.start)}–${hh(r.end % 1440)}</span></td>`;
+      if (complSlots > 0) empRows += `<td class="bar amber" colspan="${complSlots}">${normSlots === 0 ? `<span>${hh(r.start)}–${hh(r.end%1440)}</span>` : ""}</td>`;
+      if (after > 0) empRows += `<td colspan="${after}"></td>`;
+      empRows += `</tr>`;
+    }
 
     // Count row
-    const counts = new Array(totalSlots).fill(0);
-    for (const w of working) {
-      const s0 = Math.max(0, Math.round((w.start - globalStart) / 30));
-      const sl = Math.round((w.end - w.start) / 30);
-      for (let i = 0; i < sl; i++) {
-        const idx2 = s0 + i;
-        if (idx2 >= 0 && idx2 < totalSlots) counts[idx2]++;
-      }
+    const counts = new Array(slots).fill(0);
+    for (const r of rows) {
+      const s0 = Math.round((r.start - dayStart) / 30);
+      const sl = Math.round((r.end - r.start) / 30);
+      for (let i = 0; i < sl; i++) { const j = s0+i; if (j >= 0 && j < slots) counts[j]++; }
     }
-    if (working.length === 0) {
-      dayRows += `<tr><td class="day">${DAY_SHORT_ES[d]}</td><td class="name" style="color:#aab2bd;font-style:italic">sin personal</td><td colspan="${totalSlots}"></td></tr>`;
-      dayRows += `<tr class="countrow"><td class="name cntlbl">personas</td>${counts.map(c => `<td class="cnt">${c || ""}</td>`).join("")}</tr>`;
-    } else {
-      dayRows += `<tr class="countrow"><td class="name cntlbl">personas</td>${counts.map(c => `<td class="cnt">${c || ""}</td>`).join("")}</tr>`;
-    }
+    const countCells = counts.map(n => `<td class="cnt">${n||""}</td>`).join("");
+
+    blocks += `<div class="dayblock">
+      <div class="daylabel" style="color:${c}">${DAY_ES[d] ?? d}</div>
+      <table>${cg}
+        <thead>${ruler}
+          <tr class="metahead"><td>Nombre</td><td>Base</td><td>Ent.</td><td>Norm.</td><td>Compl.</td><td colspan="${slots}"></td></tr>
+        </thead>
+        <tbody>${empRows}
+          <tr class="countrow"><td class="cntlbl" colspan="5">personas</td>${countCells}</tr>
+        </tbody>
+      </table>
+    </div>`;
   }
 
-  // Deduplicate absences
   const uniqueAbs = [...new Set(absences)];
 
   const html = `<!doctype html><html><head><meta charset="utf-8"><style>
-@page { size: A3 portrait; margin: 5mm; }
-* { box-sizing: border-box; }
-html,body { margin:0; padding:0; font-family:'Helvetica Neue',Arial,sans-serif; color:#16202e; }
-.head { display:flex; align-items:center; justify-content:space-between;
-        background:#0b1f3a; color:#fff; padding:2mm 3.5mm; border-radius:2mm 2mm 0 0; }
-.head .t { font-weight:800; font-size:11pt; letter-spacing:.3px; }
-.head .t b { color:#ffcb05; }
-.head .w { font-size:9pt; opacity:.92; }
-.accent { height:1.4mm; background:${color}; }
-table { width:100%; border-collapse:collapse; table-layout:fixed; }
-td { height:3.25mm; border:0.18mm solid #e6e8ec; padding:0; font-size:6pt; overflow:hidden; line-height:1; }
-tr.ruler td { border:0; }
-td.hr { font-size:7pt; color:#6b7686; text-align:left; padding-left:0.6mm; font-weight:700;
-        border-bottom:0.4mm solid #c9ced6; font-family:'Courier New',monospace; }
-td.meta-ruler { border-bottom:0.4mm solid #c9ced6; }
-td.day { background:#f3f5f8; color:${color}; font-weight:800; font-size:8pt; text-align:center;
-         border-right:0.5mm solid #c9ced6; letter-spacing:.3px; }
-td.name { padding-left:1.2mm; font-size:6pt; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-          border-right:0.3mm solid #d7dbe1; }
-td.bar span { color:#fff; font-size:5.4pt; font-weight:700; padding-left:1mm;
-              font-family:'Courier New',monospace; white-space:nowrap; }
-tr.countrow td { height:2.3mm; background:#fafbfc; border-top:0.4mm solid #c9ced6; }
-td.cnt { text-align:center; font-size:6pt; color:#8a93a0; font-weight:700; }
-td.cntlbl { color:#aab2bd; font-style:italic; font-size:6pt; }
-.foot { font-size:7pt; color:#6b7686; padding:1.5mm 1mm 0; }
-.foot b { color:${color}; }
-.dayblock { page-break-inside: avoid; }
+@page{size:A3 portrait;margin:5mm}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{font-family:'Helvetica Neue',Arial,sans-serif;color:#16202e;font-size:6pt}
+.head{display:flex;align-items:center;justify-content:space-between;background:#0b1f3a;color:#fff;padding:2mm 3.5mm;border-radius:2mm 2mm 0 0}
+.head .t{font-weight:800;font-size:11pt;letter-spacing:.3px}
+.head .t b{color:#ffcb05}
+.head .w{font-size:9pt;opacity:.92}
+.accent{height:1.4mm;background:${c};margin-bottom:1mm}
+.dayblock{page-break-inside:avoid;margin-bottom:0.8mm}
+.daylabel{font-weight:800;font-size:7.5pt;padding:0.5mm 1mm;background:#f3f5f8;border:0.18mm solid #dde0e6;letter-spacing:.4px}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
+td{height:3mm;border:0.15mm solid #e6e8ec;padding:0;font-size:5.8pt;overflow:hidden;line-height:1}
+tr.ruler td{border:0;height:2.5mm}
+td.mr{border-bottom:0.3mm solid #c9ced6}
+td.hr{font-size:6.5pt;color:#6b7686;text-align:left;padding-left:0.5mm;font-weight:700;border-bottom:0.3mm solid #c9ced6;font-family:'Courier New',monospace}
+td.hr.band{background:#f7f8fa;color:#b0b8c6}
+tr.metahead td{font-size:5pt;font-weight:700;color:#8a93a0;text-transform:uppercase;letter-spacing:.04em;padding:0.3mm 0.5mm;border-bottom:0.3mm solid #c9ced6;height:2.2mm}
+td.name{padding-left:0.8mm;font-size:5.8pt;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:0.2mm solid #d7dbe1}
+td.meta{text-align:center;font-size:5.5pt;color:#5a657c;border-right:0.2mm solid #e6e8ec}
+td.meta.mono{font-family:'Courier New',monospace}
+td.meta.compl{color:#a50044;font-weight:700}
+td.bar{position:relative}
+td.bar span{color:#fff;font-size:5pt;font-weight:700;padding-left:0.6mm;font-family:'Courier New',monospace;white-space:nowrap}
+td.bar.amber{background:#d4940a}
+tr.countrow td{height:2mm;background:#fafbfc;border-top:0.3mm solid #c9ced6}
+td.cnt{text-align:center;font-size:5.5pt;color:#8a93a0;font-weight:700}
+td.cntlbl{color:#aab2bd;font-style:italic;font-size:5.5pt;text-align:right;padding-right:1mm}
+.foot{font-size:6.5pt;color:#6b7686;padding:1mm 1mm 0}
+.foot b{color:${c}}
 </style></head><body>
-<div class="head">
-  <div class="t">CUADRANTE · <b>${escHtml(department.name)}</b></div>
-  <div class="w">${escHtml(weekLabel)} · Camp Nou Planner</div>
-</div>
+<div class="head"><div class="t">CUADRANTE · <b>${esc(dept.name)}</b></div><div class="w">${esc(weekLbl)} · Camp Nou Planner</div></div>
 <div class="accent"></div>
-<table>${colgroup}${ruler}${dayRows}</table>
-<div class="foot">${uniqueAbs.length > 0 ? `Ausencias semana: <b>${uniqueAbs.join("</b> · <b>")}</b> · ` : ""}Solo se muestran las personas que trabajan cada día.</div>
+${blocks}
+<div class="foot">${uniqueAbs.length>0?`Ausencias semana: <b>${uniqueAbs.join("</b> · <b>")}</b> · `:""}Solo se muestran las personas que trabajan cada día.</div>
 </body></html>`;
 
-  const w = window.open("", "_blank");
-  if (w) {
-    w.document.write(html);
-    w.document.close();
-    setTimeout(() => w.print(), 400);
-  }
-}
-
-function escHtml(s: string) {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const w = window.open("","_blank");
+  if(w){w.document.write(html);w.document.close();setTimeout(()=>w.print(),400)}
 }
