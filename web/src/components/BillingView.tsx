@@ -174,43 +174,7 @@ export default function BillingView({ departments, weekMonday, showToast }: Prop
                   <td style={{ fontFamily: "'Spline Sans Mono'", fontSize: 12 }}>
                     {r.hasSched ? `${r.hours}h` : <span style={{ color: "var(--ink-3)" }}>—</span>}
                   </td>
-                  <td style={{ fontSize: 11 }}>
-                    {r.mode === "cajas" ? (
-                      /* Cajas: transactions/hour */
-                      <div>
-                        <div style={{ fontFamily: "'Spline Sans Mono'", fontWeight: 600 }}>
-                          {r.transPerHourReal !== null ? `${r.transPerHourReal} trans/h` : "—"}
-                        </div>
-                        <div style={{ fontSize: 9, color: "var(--ink-3)" }}>config: {r.cpcConfig} cl/caja·h</div>
-                      </div>
-                    ) : (
-                      /* Billing & others: €/h */
-                      <div>
-                        <div style={{ fontFamily: "'Spline Sans Mono'", fontWeight: 600 }}>
-                          {r.prodReal !== null ? `${r.prodReal} €/h` : "—"}
-                        </div>
-                        {r.mode === "billing" && (
-                          <div style={{ display: "flex", alignItems: "center", gap: 2, marginTop: 2 }}>
-                            <input className="num" type="number" style={{ width: 48, fontSize: 9 }} value={r.prodConfig}
-                              onChange={e => updateField(r.dept.id, "params.billing.productivity_eur_per_person_hour", +e.target.value || 420)} />
-                            <span style={{ fontSize: 9, color: "var(--ink-3)" }}>€/h</span>
-                          </div>
-                        )}
-                        {r.mode === "cobertura" && <div style={{ fontSize: 9, color: "var(--ink-3)" }}>informativo</div>}
-                      </div>
-                    )}
-                  </td>
-                  <td>
-                    {/* "usar real" only for billing and cajas modes */}
-                    {r.mode === "billing" && r.prodReal !== null && r.prodReal !== r.prodConfig && (
-                      <button className="editbtn" title="Usar productividad real" style={{ fontSize: 9 }}
-                        onClick={() => updateField(r.dept.id, "params.billing.productivity_eur_per_person_hour", r.prodReal!)}>↻</button>
-                    )}
-                    {r.mode === "cajas" && r.transPerHourReal !== null && r.transPerHourReal !== r.cpcConfig && (
-                      <button className="editbtn" title="Usar transacciones/hora reales" style={{ fontSize: 9 }}
-                        onClick={() => updateField(r.dept.id, "params.clients_per_cash_hour", r.transPerHourReal!)}>↻</button>
-                    )}
-                  </td>
+                  <KpiCell r={r} prodStore={prodStore} updateField={updateField} />
                 </tr>
               ))}
               {/* Departments without sales attribution (% = 0) */}
@@ -234,10 +198,7 @@ export default function BillingView({ departments, weekMonday, showToast }: Prop
                   <td style={{ fontFamily: "'Spline Sans Mono'", fontSize: 12 }}>
                     {r.hasSched ? `${r.hours}h` : <span style={{ color: "var(--ink-3)" }}>—</span>}
                   </td>
-                  <td style={{ color: "var(--ink-3)", fontSize: 11 }}>
-                    {r.hasSched && prodStore ? `tienda: ${prodStore} €/h` : "—"}
-                  </td>
-                  <td></td>
+                  <KpiCell r={r} prodStore={prodStore} updateField={updateField} />
                 </tr>
               ))}
             </tbody>
@@ -267,4 +228,53 @@ export default function BillingView({ departments, weekMonday, showToast }: Prop
       </div>
     </div>
   );
+}
+
+/* Unified KPI cell for all department modes */
+function KpiCell({ r, prodStore, updateField }: {
+  r: { dept: Department; mode: string; prodConfig: number; prodReal: number | null; cpcConfig: number; transPerHourReal: number | null; hasSched: boolean };
+  prodStore: number | null;
+  updateField: (deptId: string, path: string, val: number) => void;
+}) {
+  return <>
+    <td style={{ fontSize: 11 }}>
+      {/* Productivity €/h — ALL departments */}
+      <div>
+        <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+          <input className="num" type="number" style={{ width: 48, fontSize: 9 }} value={r.prodConfig}
+            onChange={e => updateField(r.dept.id, "params.billing.productivity_eur_per_person_hour", +e.target.value || 420)} />
+          <span style={{ fontSize: 9, color: "var(--ink-3)" }}>€/h</span>
+        </div>
+        <div style={{ fontFamily: "'Spline Sans Mono'", fontSize: 10, color: "var(--ink-2)", marginTop: 1 }}>
+          real: {r.prodReal !== null ? `${r.prodReal} €/h` : "—"}
+        </div>
+        {r.mode === "cobertura" && <div style={{ fontSize: 8, color: "var(--ink-3)", fontStyle: "italic" }}>informativo (bandas)</div>}
+      </div>
+      {/* Cajas: additional trans/hour driver */}
+      {r.mode === "cajas" && (
+        <div style={{ marginTop: 4, paddingTop: 4, borderTop: "1px solid var(--line-2)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+            <input className="num" type="number" style={{ width: 48, fontSize: 9 }} value={r.cpcConfig}
+              onChange={e => updateField(r.dept.id, "params.clients_per_cash_hour", +e.target.value || 15)} />
+            <span style={{ fontSize: 9, color: "var(--ink-3)" }}>trans/h</span>
+          </div>
+          <div style={{ fontFamily: "'Spline Sans Mono'", fontSize: 10, color: "var(--ink-2)", marginTop: 1 }}>
+            real: {r.transPerHourReal !== null ? `${r.transPerHourReal} trans/h` : "—"}
+          </div>
+        </div>
+      )}
+    </td>
+    <td>
+      {/* ↻ usar real — productivity */}
+      {r.prodReal !== null && r.prodReal !== r.prodConfig && (
+        <button className="editbtn" title="Usar productividad real" style={{ fontSize: 9 }}
+          onClick={() => updateField(r.dept.id, "params.billing.productivity_eur_per_person_hour", r.prodReal!)}>↻</button>
+      )}
+      {/* ↻ usar real — cajas trans/hour */}
+      {r.mode === "cajas" && r.transPerHourReal !== null && r.transPerHourReal !== r.cpcConfig && (
+        <button className="editbtn" title="Usar trans/hora reales" style={{ fontSize: 9, marginTop: 4 }}
+          onClick={() => updateField(r.dept.id, "params.clients_per_cash_hour", r.transPerHourReal!)}>↻</button>
+      )}
+    </td>
+  </>;
 }
