@@ -290,8 +290,8 @@ function DayGrid({day,params,storeHours,employees,allEmployees,inactiveIds,weekO
     <div onPointerMove={onPM} onPointerUp={onPU}>
       {/* HEADER */}
       <div className="ghead"><div className="grow">
-        <div className="gmeta"><div className="c-obs"/><div className="c-name" style={{fontWeight:700}}>Empleado</div><div className="c-base">Base</div><div className="c-ent">Entrada</div><div className="c-tot">Total</div><div className="c-compl">Compl.</div></div>
-        <div className="cells">{Array.from({length:slotCount},(_,k)=>{const m=t0+k*30;if(m%60!==0)return null;const band=isBand(m);return <div key={k} className={`hourcell ${band?"bandhead":""}`}>{hh(m)}{m===preM&&m%60===0&&<span className="bandtag">Montaje</span>}{m===closeM&&m%60===0&&<span className="bandtag">Cierre</span>}</div>;})}</div>
+        <div className="gmeta"><div className="c-obs"/><div className="c-name" style={{fontWeight:700}}>Empleado</div><div className="c-base">Base</div><div className="c-ent">Entrada</div><div className="c-tot">Total</div><div className="c-compl">C</div></div>
+        <div className="cells">{Array.from({length:slotCount},(_,k)=>{const m=t0+k*30;if(m%60!==0)return null;const band=isBand(m);return <div key={k} className={`hourcell ${band?"bandhead":""}`}>{hh(m)}</div>;})}</div>
       </div></div>
 
       {/* EMPLOYEES */}
@@ -327,9 +327,9 @@ function DayGrid({day,params,storeHours,employees,allEmployees,inactiveIds,weekO
                 <div className="avmini" style={{background:inactive?"#bbb":color}}>{initials(emp.name)}</div>
                 <div className="nm"><b>{emp.name}</b><span>{(() => { const av = emp.availability; const label = typeof av === "string" ? av : "⋯"; const cls = typeof av === "string" ? av : "F"; return <span className={`pill p-${cls}`}>{label}</span>; })()}{emp.fixed&&<svg className="lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>}</span></div>
               </div>
-              <div className="c-base"><b>{emp.weekly_hours}</b><small>{hpd}h/d</small></div>
+              <div className="c-base"><b>{emp.weekly_hours}</b></div>
               <div className="c-ent">{inactive?"INACT":isWorking?entry?.start:isVac?(entry?.code??"AUS").toUpperCase().slice(0,3):"—"}</div>
-              <div className="c-tot"><b>{isWorking?entry?.hours:isVac?"AUS":0}</b><small>{weekH}h sem</small></div>
+              <div className="c-tot"><b>{isWorking?entry?.hours:isVac?"AUS":0}</b></div>
               <div className="c-compl" style={{color:dayCompl>0?"#b87800":"var(--ink-3)"}}><b style={{fontFamily:"'Spline Sans Mono'",fontSize:11}}>{dayCompl>0?`${dayCompl}h`:"0h"}</b></div>
             </div>
             <div className="cells">{Array.from({length:slotCount},(_,k)=>{
