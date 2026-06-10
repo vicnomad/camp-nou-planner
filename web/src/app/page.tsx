@@ -6,8 +6,9 @@ import {
   collection, onSnapshot, query, where, doc, updateDoc, getDoc,
 } from "firebase/firestore";
 import type { Department, Employee, SolveResult } from "@/lib/types";
-import { DAYS_KEYS, DAY_LABELS } from "@/lib/types";
+import { DAYS_KEYS } from "@/lib/types";
 import { getMonday, fmtDate, weekIsoId } from "@/lib/week";
+import { exportCegidXlsx } from "@/lib/exportCegid";
 import Sidebar from "@/components/Sidebar";
 import TeamView from "@/components/TeamView";
 import ParamsView from "@/components/ParamsView";
@@ -23,30 +24,7 @@ export interface WeekOverride {
   active?: boolean;
 }
 
-function exportCegidCSV(schedule: SolveResult, employees: Employee[], dpw: number) {
-  const rows = ["Nombre;DNI;Día;Entrada;Salida;Horas;HorasCompl;Código"];
-  for (const emp of employees) {
-    const hpd = emp.weekly_hours / dpw;
-    const empSched = schedule.schedule?.[emp.id];
-    if (!empSched) continue;
-    for (const d of DAYS_KEYS) {
-      const entry = empSched[d];
-      if (!entry) continue;
-      const code = entry.code === "normal" ? "NOR" : entry.code === "off" ? "OFF" : entry.code.toUpperCase();
-      const compl = entry.code === "normal" && entry.hours ? Math.max(0, entry.hours - hpd) : 0;
-      rows.push(
-        `${emp.name};${emp.dni};${DAY_LABELS[d]};${entry.start ?? ""};${entry.end ?? ""};${entry.hours ?? 0};${compl};${code}`
-      );
-    }
-  }
-  const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `cegid_export_${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
+// Old CSV export removed — now uses exportCegidXlsx from lib/exportCegid
 
 export default function Home() {
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -165,8 +143,8 @@ export default function Home() {
             </div>
           </div>
           <div className="spacer" />
-          {view === "grid" && schedule && (
-            <button className="btn btn-ghost" onClick={() => exportCegidCSV(schedule, activeEmployees, dpw)}>
+          {view === "grid" && schedule && currentDept && (
+            <button className="btn btn-ghost" onClick={() => exportCegidXlsx(currentDept.name, activeEmployees, schedule, weekMonday, dpw)}>
               <svg className="ico" viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" /></svg> Exportar Cegid
             </button>
           )}
