@@ -155,6 +155,9 @@ export default function GridView({ department, employees, allEmployees, weekOver
           <div className="lg"><span className="lgsw" style={{background:"#d4940a"}}/> Complementarias</div>
           <div className="lg"><span className="lgsw lg-vac"/> Ausencias</div>
           <div className="lg"><span className="lgsw lg-band"/> Montaje/Cierre</div>
+          <div style={{width:"100%",fontSize:9.5,color:"var(--ink-3)",marginTop:2,lineHeight:1.6}}>
+            <b>DLB</b> día libre · <b>VCN</b> vacaciones · <b>VAA</b> vac. año ant. · <b>FRC</b> festivo recup. · <b>DEC</b> día convenio · <b>BJA</b> baja
+          </div>
         </div>
         <div className="spacer"/>
         {loading && <span className="spinner" style={{borderColor:"var(--garnet)",borderTopColor:"#fff"}}/>}
@@ -328,8 +331,8 @@ function DayGrid({day,params,storeHours,employees,allEmployees,inactiveIds,weekO
                 <div className="nm"><b>{emp.name}</b><span>{(() => { const av = emp.availability; const label = typeof av === "string" ? av : "⋯"; const cls = typeof av === "string" ? av : "F"; return <span className={`pill p-${cls}`}>{label}</span>; })()}{emp.fixed&&<svg className="lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>}</span></div>
               </div>
               <div className="c-base"><b>{emp.weekly_hours}</b></div>
-              <div className="c-ent">{inactive?"INACT":isWorking?entry?.start:isVac?(entry?.code??"AUS").toUpperCase().slice(0,3):"—"}</div>
-              <div className="c-tot"><b>{isWorking?entry?.hours:isVac?"AUS":0}</b></div>
+              <div className="c-ent">{inactive?"INACT":isWorking?entry?.start:isVac?(entry?.code??"VCN").toUpperCase():"DLB"}</div>
+              <div className="c-tot"><b>{isWorking?entry?.hours:0}</b></div>
               <div className="c-compl" style={{color:dayCompl>0?"#b87800":"var(--ink-3)"}}><b style={{fontFamily:"'Spline Sans Mono'",fontSize:11}}>{dayCompl>0?`${dayCompl}h`:"0h"}</b></div>
             </div>
             <div className="cells">{Array.from({length:slotCount},(_,k)=>{
