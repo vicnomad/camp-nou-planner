@@ -2,11 +2,12 @@
 
 import { useState, useCallback, useMemo, useEffect, useRef, type MutableRefObject } from "react";
 import { db } from "@/lib/firebase";
-import { doc, setDoc, getDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc, deleteDoc } from "firebase/firestore";
 import type { Department, Employee, SolveResult, ScheduleEntry, CoverageSlot, DayKey, StoreHours } from "@/lib/types";
 import { DAYS_KEYS, DAY_LABELS, DAY_SHORT } from "@/lib/types";
 import { weekLabel, shiftWeek, weekIsoId } from "@/lib/week";
 import { weekComplSplit } from "@/lib/weekCompl";
+import { mergeSchedule, editedDays, hasEdits, type ScheduleEdits } from "@/lib/schedule";
 import { printA3 } from "@/lib/printA3";
 import type { WeekOverride } from "@/app/page";
 
@@ -18,6 +19,7 @@ interface Props {
   department: Department; employees: Employee[]; allEmployees: Employee[];
   weekOverrides: Record<string, WeekOverride>;
   schedule: SolveResult | null; onSchedule: (r: SolveResult | null) => void;
+  scheduleEdits: ScheduleEdits; onScheduleEditsChange: (e: ScheduleEdits) => void;
   showToast: (msg: string) => void; generateRef: MutableRefObject<(() => void) | null>;
   weekMonday: string; onWeekChange: (m: string) => void;
 }
@@ -26,18 +28,16 @@ function hh(m: number) { const x=((m%1440)+1440)%1440; return String(Math.floor(
 function tm(t: string) { const [h,m]=t.split(":").map(Number); return h*60+m; }
 function initials(name: string) { return name.split(",")[0].slice(0,2).toUpperCase(); }
 
-export default function GridView({ department, employees, allEmployees, weekOverrides, schedule, onSchedule, showToast, generateRef, weekMonday, onWeekChange }: Props) {
+export default function GridView({ department, employees, allEmployees, weekOverrides, schedule, onSchedule, scheduleEdits, onScheduleEditsChange, showToast, generateRef, weekMonday, onWeekChange }: Props) {
   const [mode, setMode] = useState<"dia"|"semana">("dia");
   const [dayIdx, setDayIdx] = useState(0);
   const [loading, setLoading] = useState(false);
   const [selectedEmp, setSelectedEmp] = useState<string>("");
   const [events, setEvents] = useState<Record<string, WeekEvent>>({});
   const [eventModal, setEventModal] = useState<{day:DayKey;event:WeekEvent}|null>(null);
-  const [editedSchedule, setEditedSchedule] = useState<SolveResult|null>(null);
 
   const params = department.params;
   const color = department.color;
-  const displaySchedule = editedSchedule ?? schedule;
 
   const weekDocId = `${department.id}_${weekIsoId(weekMonday)}`;
 
@@ -45,8 +45,6 @@ export default function GridView({ department, employees, allEmployees, weekOver
   useEffect(() => {
     getDoc(doc(db,"weeks",weekDocId)).then(s => { if(s.exists()) setEvents(s.data().events??{}); else setEvents({}); });
   }, [weekDocId]);
-
-  useEffect(() => { setEditedSchedule(null); }, [schedule]);
 
   const mergedStoreHours = useMemo(() => {
     const m: Record<string,StoreHours> = {};
@@ -60,12 +58,24 @@ export default function GridView({ department, employees, allEmployees, weekOver
     return m;
   }, [params.store_hours, events]);
 
+  // Horario EFECTIVO = generado fusionado con ediciones manuales persistidas.
+  // Cobertura recalculada solo en los días editados (el resto la conserva del solver).
+  const displaySchedule = useMemo(() => {
+    const merged = mergeSchedule(schedule, scheduleEdits);
+    if (!merged) return null;
+    const days = editedDays(scheduleEdits);
+    if (days.size === 0) return merged;
+    const coverage = { ...merged.coverage };
+    for (const d of days) coverage[d] = recalcCoverage(d, merged, employees, params, mergedStoreHours);
+    return { ...merged, coverage };
+  }, [schedule, scheduleEdits, employees, params, mergedStoreHours]);
+
   async function saveEvents(ne: Record<string,WeekEvent>) { setEvents(ne); await setDoc(doc(db,"weeks",weekDocId),{events:ne},{merge:true}); }
   function addEvent(day:DayKey,ev:WeekEvent) { saveEvents({...events,[day]:ev}); setEventModal(null); showToast(`Evento añadido al ${DAY_LABELS[day]}`); }
   function removeEvent(day:DayKey) { const n={...events}; delete n[day]; saveEvents(n); setEventModal(null); }
 
   const handleGenerate = useCallback(async () => {
-    if (editedSchedule && !confirm("Se descartarán los ajustes manuales. ¿Continuar?")) return;
+    if (hasEdits(scheduleEdits) && !confirm("Se descartarán los ajustes manuales. ¿Continuar?")) return;
     setLoading(true);
     try {
       const solverEmps = employees.map(emp => {
@@ -120,21 +130,23 @@ export default function GridView({ department, employees, allEmployees, weekOver
       if(!res.ok) throw new Error(`HTTP ${res.status}`);
       const result: SolveResult = await res.json();
       onSchedule(result);
-      setEditedSchedule(null);
+      // Regenerar descarta las ediciones manuales (generado + ediciones se reinician juntos)
+      onScheduleEditsChange({});
+      await deleteDoc(doc(db,"scheduleEdits",weekDocId));
       await setDoc(doc(db,"schedules",weekDocId),{ weekStart:weekMonday, weekIso:weekIsoId(weekMonday), department:department.id, ...result });
       showToast(`<b>${result.status}</b> · Objetivo ${result.objective}${result.warnings.length>0?` · ${result.warnings.length} avisos`:""}`);
     } catch(e) { showToast(`Error: ${e instanceof Error?e.message:"desconocido"}`); }
     finally { setLoading(false); }
-  }, [department,employees,params,mergedStoreHours,weekDocId,weekMonday,onSchedule,showToast,editedSchedule]);
+  }, [department,employees,params,mergedStoreHours,weekDocId,weekMonday,onSchedule,showToast,scheduleEdits,onScheduleEditsChange]);
 
   useEffect(() => { generateRef.current=handleGenerate; return()=>{generateRef.current=null;}; }, [handleGenerate,generateRef]);
 
-  function handleManualEdit(empId:string,day:DayKey,newStart:string,newHours:number) {
-    const base = displaySchedule; if(!base) return;
-    const ns = JSON.parse(JSON.stringify(base)) as SolveResult;
-    ns.schedule[empId][day] = {start:newStart,end:hh(tm(newStart)+newHours*60),hours:newHours,code:"normal"};
-    ns.coverage[day] = recalcCoverage(day,ns,employees,params,mergedStoreHours);
-    setEditedSchedule(ns);
+  async function handleManualEdit(empId:string,day:DayKey,newStart:string,newHours:number) {
+    const entry:ScheduleEntry = {start:newStart,end:hh(tm(newStart)+newHours*60),hours:newHours,code:"normal"};
+    // Persist the edit; the EFFECTIVE schedule (displaySchedule) re-derives from it.
+    const next:ScheduleEdits = { ...scheduleEdits, [empId]: { ...(scheduleEdits[empId] ?? {}), [day]: entry } };
+    onScheduleEditsChange(next);
+    await setDoc(doc(db,"scheduleEdits",weekDocId), next);
   }
 
   // Inactive employees for display

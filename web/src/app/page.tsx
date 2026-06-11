@@ -9,6 +9,7 @@ import type { Department, Employee, SolveResult } from "@/lib/types";
 import { DAYS_KEYS } from "@/lib/types";
 import { getMonday, fmtDate, weekIsoId, isoWeekNumber } from "@/lib/week";
 import { exportCegidXlsx } from "@/lib/exportCegid";
+import { mergeSchedule, type ScheduleEdits } from "@/lib/schedule";
 import Sidebar from "@/components/Sidebar";
 import TeamView from "@/components/TeamView";
 import ParamsView from "@/components/ParamsView";
@@ -36,6 +37,7 @@ export default function Home() {
   const [collapsed, setCollapsed] = useState(false);
   const [weekMonday, setWeekMonday] = useState(() => fmtDate(getMonday(new Date())));
   const [weekOverrides, setWeekOverrides] = useState<Record<string, WeekOverride>>({});
+  const [scheduleEdits, setScheduleEdits] = useState<ScheduleEdits>({});
   const generateRef = useRef<(() => void) | null>(null);
 
   const currentDept = departments.find((d) => d.id === currentDeptId) ?? null;
@@ -81,6 +83,7 @@ export default function Home() {
   useEffect(() => {
     setSchedule(null); // blank until loaded
     setWeekOverrides({});
+    setScheduleEdits({});
     if (!weekDocId) return;
     // Load saved schedule
     getDoc(doc(db, "schedules", weekDocId)).then((snap) => {
@@ -93,7 +96,14 @@ export default function Home() {
     getDoc(doc(db, "weekOverrides", weekDocId)).then((snap) => {
       if (snap.exists()) setWeekOverrides(snap.data() as Record<string, WeekOverride>);
     });
+    // Load manual schedule edits (persisted)
+    getDoc(doc(db, "scheduleEdits", weekDocId)).then((snap) => {
+      if (snap.exists()) setScheduleEdits(snap.data() as ScheduleEdits);
+    });
   }, [weekDocId]);
+
+  // Horario EFECTIVO = generado + ediciones manuales. Única fuente para export/ficha/grid.
+  const effectiveSchedule = mergeSchedule(schedule, scheduleEdits);
 
   // Compute effective employees (base + week overrides)
   const effectiveEmployees = employees.map((emp) => {
@@ -143,16 +153,18 @@ export default function Home() {
             </div>
           </div>
           <div className="spacer" />
-          {view === "grid" && schedule && currentDept && (
-            <button className="btn btn-ghost" onClick={() => exportCegidXlsx(currentDept.name, activeEmployees, schedule, weekMonday, dpw)}>
+          {view === "grid" && effectiveSchedule && currentDept && (
+            <button className="btn btn-ghost" onClick={() => exportCegidXlsx(currentDept.name, activeEmployees, effectiveSchedule, weekMonday, dpw)}>
               <svg className="ico" viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" /></svg> Exportar Cegid
             </button>
           )}
           {view === "grid" && schedule && weekDocId && (
             <button className="btn btn-ghost" style={{ color: "var(--bad)" }} onClick={async () => {
-              if (!confirm(`¿Reiniciar el cuadrante de ${currentDept?.name} · Semana ${isoWeekNumber(weekMonday)}?\nSe borrará lo generado.`)) return;
+              if (!confirm(`¿Reiniciar el cuadrante de ${currentDept?.name} · Semana ${isoWeekNumber(weekMonday)}?\nSe borrará lo generado y los ajustes manuales.`)) return;
               await deleteDoc(doc(db, "schedules", weekDocId));
+              await deleteDoc(doc(db, "scheduleEdits", weekDocId));
               setSchedule(null);
+              setScheduleEdits({});
               showToast("Cuadrante reiniciado");
             }}>Reiniciar</button>
           )}
@@ -181,6 +193,7 @@ export default function Home() {
               department={currentDept} employees={activeEmployees}
               allEmployees={effectiveEmployees} weekOverrides={weekOverrides}
               schedule={schedule} onSchedule={setSchedule}
+              scheduleEdits={scheduleEdits} onScheduleEditsChange={setScheduleEdits}
               showToast={showToast} generateRef={generateRef}
               weekMonday={weekMonday} onWeekChange={setWeekMonday}
             />
