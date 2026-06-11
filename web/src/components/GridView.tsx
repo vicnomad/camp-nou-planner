@@ -141,12 +141,17 @@ export default function GridView({ department, employees, allEmployees, weekOver
 
   useEffect(() => { generateRef.current=handleGenerate; return()=>{generateRef.current=null;}; }, [handleGenerate,generateRef]);
 
-  async function handleManualEdit(empId:string,day:DayKey,newStart:string,newHours:number) {
+  function handleManualEdit(empId:string,day:DayKey,newStart:string,newHours:number) {
     const entry:ScheduleEntry = {start:newStart,end:hh(tm(newStart)+newHours*60),hours:newHours,code:"normal"};
-    // Persist the edit; the EFFECTIVE schedule (displaySchedule) re-derives from it.
     const next:ScheduleEdits = { ...scheduleEdits, [empId]: { ...(scheduleEdits[empId] ?? {}), [day]: entry } };
+    // Optimista: aplica el estado y repinta SIEMPRE (el EFECTIVO se re-deriva y weekComplSplit recalcula),
+    // aunque la escritura a Firestore falle.
     onScheduleEditsChange(next);
-    await setDoc(doc(db,"scheduleEdits",weekDocId), next);
+    // Persiste después. Si Firestore deniega/falla, se ve en consola y se avisa; la edición en sesión se mantiene.
+    setDoc(doc(db,"scheduleEdits",weekDocId), next).catch((err) => {
+      console.error("[scheduleEdits] no se pudo persistir la edición manual:", err);
+      showToast("⚠ No se pudo guardar la edición (revisa la conexión)");
+    });
   }
 
   // Inactive employees for display

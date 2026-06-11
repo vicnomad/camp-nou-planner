@@ -1,0 +1,11 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // App interna sin autenticación: todo el acceso es desde el cliente (navegador)
+    // con el SDK de Firestore. El comodín cubre TODAS las colecciones de la semana
+    // (schedules, weekOverrides, scheduleEdits, weeks) y las base (departments, employees).
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
