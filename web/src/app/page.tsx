@@ -154,7 +154,7 @@ export default function Home() {
           </div>
           <div className="spacer" />
           {view === "grid" && effectiveSchedule && currentDept && (
-            <button className="btn btn-ghost" onClick={() => exportCegidXlsx(currentDept.name, activeEmployees, effectiveSchedule, weekMonday, dpw)}>
+            <button className="btn btn-ghost" onClick={() => exportCegidXlsx(currentDept.name, activeEmployees, effectiveSchedule, weekMonday, dpw, scheduleEdits)}>
               <svg className="ico" viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" /></svg> Exportar Cegid
             </button>
           )}

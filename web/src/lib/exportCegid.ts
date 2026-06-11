@@ -6,6 +6,7 @@ import type { Employee, SolveResult, DayKey } from "./types";
 import { DAYS_KEYS } from "./types";
 import { isoWeekNumber } from "./week";
 import { weekComplSplit } from "./weekCompl";
+import { editedDaysOf, type ScheduleEdits } from "./schedule";
 
 // Code → color mapping for DIA column
 const CODE_COLORS: Record<string, string> = {
@@ -32,6 +33,7 @@ export async function exportCegidXlsx(
   schedule: SolveResult,
   weekMonday: string,
   dpw: number,
+  edits: ScheduleEdits,
 ) {
   const ExcelJS = (await import("exceljs")).default;
   const { saveAs } = await import("file-saver");
@@ -67,8 +69,8 @@ export async function exportCegidXlsx(
     const row = ws.getRow(ri + 2);
     row.height = 13;
     const hpd = emp.weekly_hours / dpw;
-    // Weekly split: normales = min(Σ_semana, contrato); complementarias = the LAST hours of the week
-    const split = weekComplSplit(schedule.schedule?.[emp.id], emp.weekly_hours, hpd);
+    // Weekly split: normales = min(Σ_semana, contrato); el exceso recae en los días editados a mano.
+    const split = weekComplSplit(schedule.schedule?.[emp.id], emp.weekly_hours, hpd, editedDaysOf(edits, emp.id));
 
     // A = name
     const cA = row.getCell(1);

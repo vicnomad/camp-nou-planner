@@ -25,6 +25,11 @@ export function editedDays(edits: ScheduleEdits | undefined | null): Set<DayKey>
   return out;
 }
 
+/** Días editados a mano de UN empleado (para atribuir la complementaria en su día editado). */
+export function editedDaysOf(edits: ScheduleEdits | undefined | null, empId: string): Set<DayKey> {
+  return new Set(Object.keys(edits?.[empId] ?? {}) as DayKey[]);
+}
+
 /**
  * Fusiona el cuadrante generado con las ediciones manuales.
  * Devuelve un SolveResult nuevo (no muta el base). La cobertura se conserva tal

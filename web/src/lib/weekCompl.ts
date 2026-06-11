@@ -3,8 +3,13 @@
  * (generado + ediciones manuales):
  *   normales        = min(Σ_horas_semana, contrato)
  *   complementarias = max(0, Σ_horas_semana − contrato)
- * El exceso se atribuye a las ÚLTIMAS horas de la semana, en orden MON→SUN
- * (y dentro de un día, al final del turno).
+ *
+ * Los TOTALES (total, norm, compl, missing) se calculan siempre sobre la suma
+ * semanal y NO dependen del orden. Lo que cambia es el REPARTO por día:
+ * - Sin `editedDays`: el exceso se atribuye a las últimas horas en orden MON→SUN.
+ * - Con `editedDays`: se reparte primero sobre los días NO editados (MON→SUN) y
+ *   después sobre los editados (MON→SUN), de modo que el exceso recae en los días
+ *   editados → la complementaria aparece EN el día que el usuario tocó.
  */
 import type { ScheduleEntry, DayKey } from "./types";
 import { DAYS_KEYS } from "./types";
@@ -29,11 +34,18 @@ export function weekComplSplit(
   entries: Record<string, ScheduleEntry> | undefined,
   contract: number,
   fallbackHpd: number,
+  editedDays?: Set<DayKey>,
 ): WeekSplit {
+  // Orden de reparto: días NO editados primero (MON→SUN), luego los editados (MON→SUN).
+  // Sin editedDays → orden MON→SUN puro (comportamiento idéntico al anterior).
+  const order: DayKey[] = (editedDays && editedDays.size > 0)
+    ? [...DAYS_KEYS.filter(d => !editedDays.has(d)), ...DAYS_KEYS.filter(d => editedDays.has(d))]
+    : [...DAYS_KEYS];
+
   let cum = 0;
   let worked = false;
   const days = {} as Record<DayKey, DaySplit>;
-  for (const d of DAYS_KEYS) {
+  for (const d of order) {
     const e = entries?.[d];
     const isWork = e?.code === "normal";
     if (isWork) worked = true;

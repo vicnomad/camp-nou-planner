@@ -7,7 +7,7 @@ import type { Department, Employee, SolveResult, ScheduleEntry, CoverageSlot, Da
 import { DAYS_KEYS, DAY_LABELS, DAY_SHORT } from "@/lib/types";
 import { weekLabel, shiftWeek, weekIsoId } from "@/lib/week";
 import { weekComplSplit } from "@/lib/weekCompl";
-import { mergeSchedule, editedDays, hasEdits, type ScheduleEdits } from "@/lib/schedule";
+import { mergeSchedule, editedDays, editedDaysOf, hasEdits, type ScheduleEdits } from "@/lib/schedule";
 import { printA3 } from "@/lib/printA3";
 import type { WeekOverride } from "@/app/page";
 
@@ -177,7 +177,7 @@ export default function GridView({ department, employees, allEmployees, weekOver
           </select>
           {selectedEmp && displaySchedule && (
             <button className="btn btn-ghost" style={{padding:"5px 8px",fontSize:10}} onClick={()=>{
-              const text = buildFichaText(selectedEmp, employees, displaySchedule, department, weekMonday, params);
+              const text = buildFichaText(selectedEmp, employees, displaySchedule, department, weekMonday, params, scheduleEdits);
               navigator.clipboard.writeText(text).then(()=>showToast("Copiado ✓"));
             }}>
               <svg className="ico" viewBox="0 0 24 24" style={{width:12,height:12}}><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
@@ -187,14 +187,14 @@ export default function GridView({ department, employees, allEmployees, weekOver
         <div className="spacer"/>
         {loading && <span className="spinner" style={{borderColor:"var(--garnet)",borderTopColor:"#fff"}}/>}
         {displaySchedule && (
-          <button className="btn btn-ghost" onClick={() => printA3(department, employees, displaySchedule, mergedStoreHours, weekLabel(weekMonday))}>
+          <button className="btn btn-ghost" onClick={() => printA3(department, employees, displaySchedule, mergedStoreHours, weekLabel(weekMonday), scheduleEdits)}>
             <svg className="ico" viewBox="0 0 24 24"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-2M6 14h12v7H6Z"/></svg> Cuadrante A3
           </button>
         )}
       </div>
 
       {/* Ficha individual */}
-      {selectedEmp && (<FichaView empId={selectedEmp} employees={employees} schedule={displaySchedule} department={department} weekMonday={weekMonday} params={params} />)}
+      {selectedEmp && (<FichaView empId={selectedEmp} employees={employees} schedule={displaySchedule} department={department} weekMonday={weekMonday} params={params} scheduleEdits={scheduleEdits} />)}
 
       {!selectedEmp && mode==="dia" && (<>
         <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14,flexWrap:"wrap"}}>
@@ -221,7 +221,7 @@ export default function GridView({ department, employees, allEmployees, weekOver
             <span className="sub">desde apertura − montaje</span>
           </div>
           {displaySchedule ? (
-            <div className="gwrap"><DayGrid day={DAYS_KEYS[dayIdx]} params={params} storeHours={mergedStoreHours} employees={employees} allEmployees={allEmployees} inactiveIds={inactiveIds} weekOverrides={weekOverrides} schedule={displaySchedule} color={color} onManualEdit={handleManualEdit}/></div>
+            <div className="gwrap"><DayGrid day={DAYS_KEYS[dayIdx]} params={params} storeHours={mergedStoreHours} employees={employees} allEmployees={allEmployees} inactiveIds={inactiveIds} weekOverrides={weekOverrides} schedule={displaySchedule} scheduleEdits={scheduleEdits} color={color} onManualEdit={handleManualEdit}/></div>
           ) : (
             <div className="cardpad" style={{textAlign:"center",color:"var(--ink-3)",padding:40}}>Pulsa <b>Generar</b> para calcular el cuadrante</div>
           )}
@@ -232,7 +232,7 @@ export default function GridView({ department, employees, allEmployees, weekOver
         {displaySchedule ? DAYS_KEYS.map(d=>(
           <div key={d} className="dayblock">
             <h5>{DAY_LABELS[d]} {events[d]?.type==="match"&&<span className="dbtag match">Partido</span>}{events[d]?.type==="inventory"&&<span className="dbtag inv">Inventario</span>}</h5>
-            <div className="gscroll"><DayGrid day={d} params={params} storeHours={mergedStoreHours} employees={employees} allEmployees={allEmployees} inactiveIds={inactiveIds} weekOverrides={weekOverrides} schedule={displaySchedule} color={color} onManualEdit={handleManualEdit}/></div>
+            <div className="gscroll"><DayGrid day={d} params={params} storeHours={mergedStoreHours} employees={employees} allEmployees={allEmployees} inactiveIds={inactiveIds} weekOverrides={weekOverrides} schedule={displaySchedule} scheduleEdits={scheduleEdits} color={color} onManualEdit={handleManualEdit}/></div>
           </div>
         )) : <div className="card cardpad" style={{textAlign:"center",color:"var(--ink-3)",padding:40}}>Pulsa <b>Generar</b></div>}
       </div>)}
@@ -243,7 +243,7 @@ export default function GridView({ department, employees, allEmployees, weekOver
         let totalCompl = 0;
         const avisos: string[] = [];
         for (const emp of employees) {
-          const s = weekComplSplit(displaySchedule.schedule?.[emp.id], emp.weekly_hours, emp.weekly_hours / dpw2);
+          const s = weekComplSplit(displaySchedule.schedule?.[emp.id], emp.weekly_hours, emp.weekly_hours / dpw2, editedDaysOf(scheduleEdits, emp.id));
           totalCompl += s.compl;
           if (!s.worked) continue;
           if (s.compl > 0) avisos.push(`${emp.name}: ${s.compl}h complementarias`);
@@ -299,10 +299,10 @@ function recalcCoverage(day:DayKey,sched:SolveResult,employees:Employee[],params
 }
 
 /* DayGrid — with COMPL column, overrides indicators */
-function DayGrid({day,params,storeHours,employees,allEmployees,inactiveIds,weekOverrides,schedule,color,onManualEdit}:{
+function DayGrid({day,params,storeHours,employees,allEmployees,inactiveIds,weekOverrides,schedule,scheduleEdits,color,onManualEdit}:{
   day:DayKey;params:Department["params"];storeHours:Record<string,StoreHours>;
   employees:Employee[];allEmployees:Employee[];inactiveIds:Set<string>;weekOverrides:Record<string,WeekOverride>;
-  schedule:SolveResult;color:string;
+  schedule:SolveResult;scheduleEdits:ScheduleEdits;color:string;
   onManualEdit:(empId:string,day:DayKey,start:string,hours:number)=>void;
 }) {
   const sh=storeHours[day]; if(!sh) return null;
@@ -363,8 +363,9 @@ function DayGrid({day,params,storeHours,employees,allEmployees,inactiveIds,weekO
         const isVac = !inactive && entry?.code && entry.code!=="normal" && entry.code!=="off";
         const isWorking = !isOff && !isVac;
         const hpd = emp.weekly_hours/dpw;
-        // Weekly split: normal hours remaining at the start of this day (contract − cumulative MON→SUN)
-        const rem = weekComplSplit(schedule.schedule?.[emp.id], emp.weekly_hours, hpd).days[day].rem;
+        // Weekly split: las horas editadas a mano se reparten al final → la parte normal disponible
+        // al empezar ESTE día (rem) ya descuenta lo no editado; el exceso del día editado sale compl aquí.
+        const rem = weekComplSplit(schedule.schedule?.[emp.id], emp.weekly_hours, hpd, editedDaysOf(scheduleEdits, emp.id)).days[day].rem;
         const normRemSlots = Math.round(rem*2);
 
         let ssSlot=-1, shSlots=0;
@@ -447,12 +448,12 @@ function fichaLine(entry: ScheduleEntry|undefined, normH: number, complH: number
   return ABSENCE_LABELS[entry.code] ?? entry.code.toUpperCase();
 }
 
-function buildFichaText(empId: string, employees: Employee[], sched: SolveResult, dept: Department, weekMon: string, params: Department["params"]): string {
+function buildFichaText(empId: string, employees: Employee[], sched: SolveResult, dept: Department, weekMon: string, params: Department["params"], scheduleEdits: ScheduleEdits): string {
   const emp = employees.find(e=>e.id===empId);
   if (!emp) return "";
   const dpw = params.days_per_week ?? 5;
   const hpd = emp.weekly_hours / dpw;
-  const split = weekComplSplit(sched?.schedule?.[empId], emp.weekly_hours, hpd);
+  const split = weekComplSplit(sched?.schedule?.[empId], emp.weekly_hours, hpd, editedDaysOf(scheduleEdits, empId));
   const lines = [`Horario · ${emp.name} · ${dept.name}`, weekLabel(weekMon), ""];
   DAYS_KEYS.forEach((d, i) => {
     const entry = sched?.schedule?.[empId]?.[d];
@@ -463,13 +464,13 @@ function buildFichaText(empId: string, employees: Employee[], sched: SolveResult
   return lines.join("\n");
 }
 
-function FichaView({empId,employees,schedule,department,weekMonday:wm,params}:{empId:string;employees:Employee[];schedule:SolveResult|null;department:Department;weekMonday:string;params:Department["params"]}) {
+function FichaView({empId,employees,schedule,department,weekMonday:wm,params,scheduleEdits}:{empId:string;employees:Employee[];schedule:SolveResult|null;department:Department;weekMonday:string;params:Department["params"];scheduleEdits:ScheduleEdits}) {
   const emp = employees.find(e=>e.id===empId);
   if (!emp) return null;
   if (!schedule) return <div className="card cardpad" style={{color:"var(--ink-3)",textAlign:"center",padding:30}}>Genera el cuadrante primero</div>;
   const dpw = params.days_per_week ?? 5;
   const hpd = emp.weekly_hours / dpw;
-  const split = weekComplSplit(schedule.schedule?.[empId], emp.weekly_hours, hpd);
+  const split = weekComplSplit(schedule.schedule?.[empId], emp.weekly_hours, hpd, editedDaysOf(scheduleEdits, empId));
   return (
     <div className="card" style={{maxWidth:500}}>
       <div className="chead"><h3>{emp.name}</h3><span className="sub">{emp.weekly_hours}h/sem · {hpd}h/día</span></div>
