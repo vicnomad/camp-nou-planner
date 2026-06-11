@@ -5,6 +5,7 @@
 import type { Employee, SolveResult, DayKey } from "./types";
 import { DAYS_KEYS } from "./types";
 import { isoWeekNumber } from "./week";
+import { weekComplSplit } from "./weekCompl";
 
 // Code → color mapping for DIA column
 const CODE_COLORS: Record<string, string> = {
@@ -66,6 +67,8 @@ export async function exportCegidXlsx(
     const row = ws.getRow(ri + 2);
     row.height = 13;
     const hpd = emp.weekly_hours / dpw;
+    // Weekly split: normales = min(Σ_semana, contrato); complementarias = the LAST hours of the week
+    const split = weekComplSplit(schedule.schedule?.[emp.id], emp.weekly_hours, hpd);
 
     // A = name
     const cA = row.getCell(1);
@@ -99,10 +102,8 @@ export async function exportCegidXlsx(
         cOrd.value = "0:00"; cComp.value = "0:00";
         cDia.fill = { type: "pattern", pattern: "solid", fgColor: { argb: CODE_COLORS.DLB } };
       } else if (entry.code === "normal" && entry.start) {
-        // Working
-        const hours = entry.hours ?? hpd;
-        const normH = Math.min(hours, hpd);
-        const complH = Math.max(0, hours - hpd);
+        // Working — weekly split for this day
+        const { hours, norm: normH, compl: complH } = split.days[d];
         const hasCompl = complH > 0.01;
 
         cDia.value = hasCompl ? "IP2" : `${fmtHM(hours)}`;

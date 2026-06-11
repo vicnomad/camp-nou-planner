@@ -6,6 +6,7 @@ import { doc, setDoc, getDoc } from "firebase/firestore";
 import type { Department, Employee, SolveResult, ScheduleEntry, CoverageSlot, DayKey, StoreHours } from "@/lib/types";
 import { DAYS_KEYS, DAY_LABELS, DAY_SHORT } from "@/lib/types";
 import { weekLabel, shiftWeek, weekIsoId } from "@/lib/week";
+import { weekComplSplit } from "@/lib/weekCompl";
 import { printA3 } from "@/lib/printA3";
 import type { WeekOverride } from "@/app/page";
 
@@ -219,23 +220,22 @@ export default function GridView({ department, employees, allEmployees, weekOver
         )) : <div className="card cardpad" style={{textAlign:"center",color:"var(--ink-3)",padding:40}}>Pulsa <b>Generar</b></div>}
       </div>)}
 
-      {/* Weekly complementary summary */}
+      {/* Weekly complementary summary — cómputo SEMANAL vs contrato */}
       {displaySchedule && (() => {
         const dpw2 = params.days_per_week ?? 5;
         let totalCompl = 0;
+        const avisos: string[] = [];
         for (const emp of employees) {
-          const hpd2 = emp.weekly_hours / dpw2;
-          for (const d of DAYS_KEYS) {
-            const e = displaySchedule.schedule?.[emp.id]?.[d];
-            if (e?.code === "normal" && e.hours) {
-              const ex = e.hours - hpd2;
-              if (ex > 0) totalCompl += ex;
-            }
-          }
+          const s = weekComplSplit(displaySchedule.schedule?.[emp.id], emp.weekly_hours, emp.weekly_hours / dpw2);
+          totalCompl += s.compl;
+          if (!s.worked) continue;
+          if (s.compl > 0) avisos.push(`${emp.name}: ${s.compl}h complementarias`);
+          else if (s.missing > 0) avisos.push(`${emp.name}: faltan ${s.missing}h`);
         }
-        return totalCompl > 0 ? (
+        return (totalCompl > 0 || avisos.length > 0) ? (
           <div style={{ marginTop: 10, padding: "8px 14px", background: "#fdf4dd", border: "1px solid #e8c96a", borderRadius: 10, fontSize: 13, fontWeight: 600, color: "#8a5e00" }}>
             Complementarias semana ({department.name}): {totalCompl}h
+            {avisos.map((a, i) => <div key={i} style={{ fontSize: 11, fontWeight: 500, marginTop: 2 }}>{a}</div>)}
           </div>
         ) : null;
       })()}
@@ -346,21 +346,19 @@ function DayGrid({day,params,storeHours,employees,allEmployees,inactiveIds,weekO
         const isVac = !inactive && entry?.code && entry.code!=="normal" && entry.code!=="off";
         const isWorking = !isOff && !isVac;
         const hpd = emp.weekly_hours/dpw;
-        const baseSlots = Math.round(hpd*2);
+        // Weekly split: normal hours remaining at the start of this day (contract − cumulative MON→SUN)
+        const rem = weekComplSplit(schedule.schedule?.[emp.id], emp.weekly_hours, hpd).days[day].rem;
+        const normRemSlots = Math.round(rem*2);
 
         let ssSlot=-1, shSlots=0;
         if(isWorking&&entry?.start){ssSlot=Math.round((tm(entry.start)-t0)/30);shSlots=(entry.hours??hpd)*2;}
         const dp=dragPreview?.empId===emp.id?dragPreview:null;
         const dS=dp?dp.startSlot:ssSlot;const dSl=dp?dp.slots:shSlots;
 
-        // Week totals for the Total column
-        let weekH=0;
-        for(const d2 of DAYS_KEYS){const e2=schedule.schedule?.[emp.id]?.[d2];if(e2?.code==="normal"&&e2.hours)weekH+=e2.hours;}
-
-        // Day-specific complementary: excess of THIS day only
+        // This day's complementary share of the WEEKLY excess (last hours of the week, in order)
         let dayHours = isWorking ? (entry?.hours ?? hpd) : 0;
-        if(dp&&isWorking){ dayHours = dp.slots/2; weekH = weekH - (entry?.hours??hpd) + dayHours; }
-        const dayCompl = Math.max(0, dayHours - hpd);
+        if(dp&&isWorking) dayHours = dp.slots/2;
+        const dayCompl = Math.max(0, dayHours - rem);
 
         return (
           <div key={emp.id} className="grow" style={inactive?{opacity:.35}:{}}>
@@ -379,7 +377,7 @@ function DayGrid({day,params,storeHours,employees,allEmployees,inactiveIds,weekO
               const m=t0+k*30;const band=isBand(m);const he=(m+30)%60===0;
               if(isVac) return <div key={k} className={`cell w vac ${k===0?"s":""} ${k===slotCount-1?"e":""} ${he?"hourend":""}`} style={{"--dc":color} as React.CSSProperties}><div className="fill"/>{k===Math.floor(slotCount/2)&&<span className="entlabel dark">{(entry?.code??"AUS").toUpperCase().slice(0,3)}</span>}</div>;
               const inS=isWorking&&k>=dS&&k<dS+dSl;
-              if(inS){const iS=k===dS,iE=k===dS+dSl-1;const comp=(k-dS)>=baseSlots;return <div key={k} className={`cell w ${iS?"s":""} ${iE?"e":""} ${he?"hourend":""} ${band?"band":""}`} style={{"--dc":comp?"#d4940a":color,cursor:"grab"} as React.CSSProperties} onPointerDown={e=>onPD(e,emp.id,dS,dSl,k)}><div className="fill"/>{iS&&<span className="entlabel">{hh(t0+dS*30)}</span>}</div>;}
+              if(inS){const iS=k===dS,iE=k===dS+dSl-1;const comp=(k-dS)>=normRemSlots;return <div key={k} className={`cell w ${iS?"s":""} ${iE?"e":""} ${he?"hourend":""} ${band?"band":""}`} style={{"--dc":comp?"#d4940a":color,cursor:"grab"} as React.CSSProperties} onPointerDown={e=>onPD(e,emp.id,dS,dSl,k)}><div className="fill"/>{iS&&<span className="entlabel">{hh(t0+dS*30)}</span>}</div>;}
               return <div key={k} className={`cell ${he?"hourend":""} ${band?"band":""}`}/>;
             })}</div>
           </div>
@@ -424,12 +422,10 @@ function dayDate(weekMonday2: string, idx: number): string {
   return `${d.getDate()}/${d.getMonth()+1}`;
 }
 
-function fichaLine(entry: ScheduleEntry|undefined, hpd: number): string {
+function fichaLine(entry: ScheduleEntry|undefined, normH: number, complH: number): string {
   if (!entry || entry.code === "off") return "Libre";
   if (entry.code === "normal" && entry.start && entry.end) {
-    const h = entry.hours ?? hpd;
-    const compl = Math.max(0, h - hpd);
-    return compl > 0 ? `${entry.start} a ${entry.end} (${hpd}h + ${compl}h compl.)` : `${entry.start} a ${entry.end} (${h}h)`;
+    return complH > 0 ? `${entry.start} a ${entry.end} (${normH}h + ${complH}h compl.)` : `${entry.start} a ${entry.end} (${normH + complH}h)`;
   }
   return ABSENCE_LABELS[entry.code] ?? entry.code.toUpperCase();
 }
@@ -439,15 +435,14 @@ function buildFichaText(empId: string, employees: Employee[], sched: SolveResult
   if (!emp) return "";
   const dpw = params.days_per_week ?? 5;
   const hpd = emp.weekly_hours / dpw;
+  const split = weekComplSplit(sched?.schedule?.[empId], emp.weekly_hours, hpd);
   const lines = [`Horario · ${emp.name} · ${dept.name}`, weekLabel(weekMon), ""];
-  let total = 0;
   DAYS_KEYS.forEach((d, i) => {
     const entry = sched?.schedule?.[empId]?.[d];
-    const line = fichaLine(entry, hpd);
-    lines.push(`${DAY_LABELS[d]} ${dayDate(weekMon,i)}: ${line}`);
-    if (entry?.code === "normal" && entry.hours) total += entry.hours;
+    const ds = split.days[d];
+    lines.push(`${DAY_LABELS[d]} ${dayDate(weekMon,i)}: ${fichaLine(entry, ds.norm, ds.compl)}`);
   });
-  lines.push("", `Total: ${total}h`);
+  lines.push("", `Total: ${split.total}h${split.compl > 0 ? ` (${split.norm}h + ${split.compl}h compl.)` : ""}`);
   return lines.join("\n");
 }
 
@@ -457,22 +452,22 @@ function FichaView({empId,employees,schedule,department,weekMonday:wm,params}:{e
   if (!schedule) return <div className="card cardpad" style={{color:"var(--ink-3)",textAlign:"center",padding:30}}>Genera el cuadrante primero</div>;
   const dpw = params.days_per_week ?? 5;
   const hpd = emp.weekly_hours / dpw;
-  let total = 0;
+  const split = weekComplSplit(schedule.schedule?.[empId], emp.weekly_hours, hpd);
   return (
     <div className="card" style={{maxWidth:500}}>
       <div className="chead"><h3>{emp.name}</h3><span className="sub">{emp.weekly_hours}h/sem · {hpd}h/día</span></div>
       <div className="cardpad" style={{fontSize:13}}>
         {DAYS_KEYS.map((d,i) => {
           const entry = schedule.schedule?.[empId]?.[d];
-          const line = fichaLine(entry, hpd);
-          if (entry?.code === "normal" && entry.hours) total += entry.hours;
+          const ds = split.days[d];
+          const line = fichaLine(entry, ds.norm, ds.compl);
           const isWork = entry?.code === "normal";
           return <div key={d} style={{display:"flex",gap:10,padding:"5px 0",borderBottom:"1px solid var(--line-2)"}}>
             <span style={{width:70,fontWeight:600,color:"var(--ink-2)",fontSize:12}}>{DAY_LABELS[d]} {dayDate(wm,i)}</span>
             <span style={{color: isWork ? "var(--ink)" : "var(--ink-3)", fontWeight: isWork ? 500 : 400}}>{line}</span>
           </div>;
         })}
-        <div style={{marginTop:10,fontWeight:700,fontSize:14}}>Total: {total}h</div>
+        <div style={{marginTop:10,fontWeight:700,fontSize:14}}>Total: {split.total}h{split.compl > 0 ? ` (${split.norm}h + ${split.compl}h compl.)` : ""}</div>
       </div>
     </div>
   );

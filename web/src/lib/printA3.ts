@@ -4,6 +4,7 @@
  */
 import type { Department, Employee, SolveResult, StoreHours } from "./types";
 import { DAYS_KEYS } from "./types";
+import { weekComplSplit } from "./weekCompl";
 
 const DAY_ES: Record<string, string> = {
   MON:"LUNES",TUE:"MARTES",WED:"MIÉRCOLES",THU:"JUEVES",FRI:"VIERNES",SAT:"SÁBADO",SUN:"DOMINGO"
@@ -24,6 +25,10 @@ export function printA3(
 
   const absences: string[] = [];
 
+  // Weekly split per employee: complementarias = last hours of the week (MON→SUN order)
+  const splitByEmp = new Map(employees.map(e =>
+    [e.id, weekComplSplit(sched.schedule?.[e.id], e.weekly_hours, e.weekly_hours / dpw)] as const));
+
   // Build each day block
   let blocks = "";
   for (const d of DAYS_KEYS) {
@@ -41,14 +46,15 @@ export function printA3(
     if (slots <= 0) continue;
 
     // Collect working employees
-    const rows: {name:string;wh:number;hpd:number;start:number;end:number;hours:number}[] = [];
+    const rows: {name:string;wh:number;hpd:number;start:number;end:number;hours:number;normH:number;complH:number}[] = [];
     for (const emp of employees) {
       const en = sched.schedule?.[emp.id]?.[d];
       if (!en) continue;
       if (en.code === "normal" && en.start && en.end) {
         const hpd = emp.weekly_hours / dpw;
         let endM2 = tm(en.end); if (endM2 <= tm(en.start)) endM2 += 1440;
-        rows.push({name:emp.name, wh:emp.weekly_hours, hpd, start:tm(en.start), end:endM2, hours:en.hours??hpd});
+        const ds = splitByEmp.get(emp.id)!.days[d];
+        rows.push({name:emp.name, wh:emp.weekly_hours, hpd, start:tm(en.start), end:endM2, hours:en.hours??hpd, normH:ds.norm, complH:ds.compl});
       } else if (en.code && en.code !== "off") {
         absences.push(`${emp.name} (${en.code.toUpperCase()})`);
       }
@@ -90,11 +96,10 @@ export function printA3(
     for (const r of rows) {
       const s0 = Math.round((r.start - dayStart) / 30);
       const sl = Math.round((r.end - r.start) / 30);
-      const baseSlots = Math.round(r.hpd * 2);
-      const normSlots = Math.min(sl, baseSlots);
-      const complSlots = Math.max(0, sl - baseSlots);
-      const normH = normSlots / 2;
-      const complH = complSlots / 2;
+      const normSlots = Math.min(sl, Math.round(r.normH * 2));
+      const complSlots = Math.max(0, sl - normSlots);
+      const normH = r.normH;
+      const complH = r.complH;
       const before = s0;
       const after = slots - s0 - sl;
 
