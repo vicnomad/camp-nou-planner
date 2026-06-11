@@ -154,6 +154,16 @@ export default function GridView({ department, employees, allEmployees, weekOver
     });
   }
 
+  function handleSetDayOff(empId:string,day:DayKey) {
+    const next:ScheduleEdits = { ...scheduleEdits, [empId]: { ...(scheduleEdits[empId] ?? {}), [day]: { code:"off" } } };
+    // Mismo patrón optimista que handleManualEdit: actualiza estado y repinta SIEMPRE; luego persiste.
+    onScheduleEditsChange(next);
+    setDoc(doc(db,"scheduleEdits",weekDocId), next).catch((err) => {
+      console.error("[scheduleEdits] poner libre:", err);
+      showToast("⚠ No se pudo guardar el cambio (revisa la conexión)");
+    });
+  }
+
   // Inactive employees for display
   const inactiveIds = new Set(Object.entries(weekOverrides).filter(([,v])=>v.active===false).map(([k])=>k));
 
@@ -221,7 +231,7 @@ export default function GridView({ department, employees, allEmployees, weekOver
             <span className="sub">desde apertura − montaje</span>
           </div>
           {displaySchedule ? (
-            <div className="gwrap"><DayGrid day={DAYS_KEYS[dayIdx]} params={params} storeHours={mergedStoreHours} employees={employees} allEmployees={allEmployees} inactiveIds={inactiveIds} weekOverrides={weekOverrides} schedule={displaySchedule} scheduleEdits={scheduleEdits} color={color} onManualEdit={handleManualEdit}/></div>
+            <div className="gwrap"><DayGrid day={DAYS_KEYS[dayIdx]} params={params} storeHours={mergedStoreHours} employees={employees} allEmployees={allEmployees} inactiveIds={inactiveIds} weekOverrides={weekOverrides} schedule={displaySchedule} scheduleEdits={scheduleEdits} color={color} onManualEdit={handleManualEdit} onSetOff={handleSetDayOff}/></div>
           ) : (
             <div className="cardpad" style={{textAlign:"center",color:"var(--ink-3)",padding:40}}>Pulsa <b>Generar</b> para calcular el cuadrante</div>
           )}
@@ -232,7 +242,7 @@ export default function GridView({ department, employees, allEmployees, weekOver
         {displaySchedule ? DAYS_KEYS.map(d=>(
           <div key={d} className="dayblock">
             <h5>{DAY_LABELS[d]} {events[d]?.type==="match"&&<span className="dbtag match">Partido</span>}{events[d]?.type==="inventory"&&<span className="dbtag inv">Inventario</span>}</h5>
-            <div className="gscroll"><DayGrid day={d} params={params} storeHours={mergedStoreHours} employees={employees} allEmployees={allEmployees} inactiveIds={inactiveIds} weekOverrides={weekOverrides} schedule={displaySchedule} scheduleEdits={scheduleEdits} color={color} onManualEdit={handleManualEdit}/></div>
+            <div className="gscroll"><DayGrid day={d} params={params} storeHours={mergedStoreHours} employees={employees} allEmployees={allEmployees} inactiveIds={inactiveIds} weekOverrides={weekOverrides} schedule={displaySchedule} scheduleEdits={scheduleEdits} color={color} onManualEdit={handleManualEdit} onSetOff={handleSetDayOff}/></div>
           </div>
         )) : <div className="card cardpad" style={{textAlign:"center",color:"var(--ink-3)",padding:40}}>Pulsa <b>Generar</b></div>}
       </div>)}
@@ -299,11 +309,12 @@ function recalcCoverage(day:DayKey,sched:SolveResult,employees:Employee[],params
 }
 
 /* DayGrid — with COMPL column, overrides indicators */
-function DayGrid({day,params,storeHours,employees,allEmployees,inactiveIds,weekOverrides,schedule,scheduleEdits,color,onManualEdit}:{
+function DayGrid({day,params,storeHours,employees,allEmployees,inactiveIds,weekOverrides,schedule,scheduleEdits,color,onManualEdit,onSetOff}:{
   day:DayKey;params:Department["params"];storeHours:Record<string,StoreHours>;
   employees:Employee[];allEmployees:Employee[];inactiveIds:Set<string>;weekOverrides:Record<string,WeekOverride>;
   schedule:SolveResult;scheduleEdits:ScheduleEdits;color:string;
   onManualEdit:(empId:string,day:DayKey,start:string,hours:number)=>void;
+  onSetOff:(empId:string,day:DayKey)=>void;
 }) {
   const sh=storeHours[day]; if(!sh) return null;
   const openM=tm(sh.open);const cr=tm(sh.close);const closeM=cr<=openM?cr+1440:cr;
@@ -343,6 +354,16 @@ function DayGrid({day,params,storeHours,employees,allEmployees,inactiveIds,weekO
 
   const dpw=params.days_per_week??5;
 
+  // Añadir turno tocando un día libre: start = celda clicada, clampada a [apertura, fin−jornada];
+  // horas = jornada estándar de la persona (múltiplos de 0,5h). La fila se vuelve "working" sola.
+  function addShiftAt(emp:Employee,k:number){
+    const dur=Math.max(1,Math.round((emp.weekly_hours/dpw)*2)); // slots de 30 min
+    const openSlot=Math.max(0,Math.round((openM-t0)/30));
+    const maxStartSlot=Math.max(openSlot,slotCount-dur);
+    const startSlot=Math.max(openSlot,Math.min(k,maxStartSlot));
+    onManualEdit(emp.id,day,hh(t0+startSlot*30),dur/2);
+  }
+
   // Show all employees (active + inactive grayed)
   const showEmployees = allEmployees;
 
@@ -362,6 +383,8 @@ function DayGrid({day,params,storeHours,employees,allEmployees,inactiveIds,weekO
         const isOff = inactive || !entry || entry.code==="off";
         const isVac = !inactive && entry?.code && entry.code!=="normal" && entry.code!=="off";
         const isWorking = !isOff && !isVac;
+        // Día LIBRE editable: activo, sin turno y SIN ausencia → se le puede añadir turno tocando la rejilla.
+        const isFreeEditable = !inactive && (!entry || entry.code==="off");
         const hpd = emp.weekly_hours/dpw;
         // Weekly split: las horas editadas a mano se reparten al final → la parte normal disponible
         // al empezar ESTE día (rem) ya descuenta lo no editado; el exceso del día editado sale compl aquí.
@@ -387,7 +410,13 @@ function DayGrid({day,params,storeHours,employees,allEmployees,inactiveIds,weekO
                 <div className="nm"><b>{emp.name}</b><span>{(() => { const av = emp.availability; const label = typeof av === "string" ? av : "⋯"; const cls = typeof av === "string" ? av : "F"; return <span className={`pill p-${cls}`}>{label}</span>; })()}{emp.fixed&&<svg className="lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>}</span></div>
               </div>
               <div className="c-base"><b>{emp.weekly_hours}</b></div>
-              <div className="c-ent">{inactive?"INACT":isWorking?entry?.start:isVac?(entry?.code??"VCN").toUpperCase():"DLB"}</div>
+              <div className="c-ent">{inactive?"INACT":isWorking?(
+                <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",gap:3}}>
+                  {entry?.start}
+                  <button title="Poner Libre" onClick={e=>{e.stopPropagation();e.preventDefault();onSetOff(emp.id,day);}}
+                    style={{border:"none",background:"transparent",cursor:"pointer",color:"var(--ink-3)",fontSize:12,lineHeight:1,padding:0,fontWeight:700}}>✕</button>
+                </span>
+              ):isVac?(entry?.code??"VCN").toUpperCase():"DLB"}</div>
               <div className="c-tot"><b>{isWorking?entry?.hours:0}</b></div>
               <div className="c-compl" style={{color:dayCompl>0?"#b87800":"var(--ink-3)"}}><b style={{fontFamily:"'Spline Sans Mono'",fontSize:11}}>{dayCompl>0?`${dayCompl}h`:"0h"}</b></div>
             </div>
@@ -396,6 +425,7 @@ function DayGrid({day,params,storeHours,employees,allEmployees,inactiveIds,weekO
               if(isVac) return <div key={k} className={`cell w vac ${k===0?"s":""} ${k===slotCount-1?"e":""} ${he?"hourend":""}`} style={{"--dc":color} as React.CSSProperties}><div className="fill"/>{k===Math.floor(slotCount/2)&&<span className="entlabel dark">{(entry?.code??"AUS").toUpperCase().slice(0,3)}</span>}</div>;
               const inS=isWorking&&k>=dS&&k<dS+dSl;
               if(inS){const iS=k===dS,iE=k===dS+dSl-1;const comp=(k-dS)>=normRemSlots;return <div key={k} className={`cell w ${iS?"s":""} ${iE?"e":""} ${he?"hourend":""} ${band?"band":""}`} style={{"--dc":comp?"#d4940a":color,cursor:"grab"} as React.CSSProperties} onPointerDown={e=>onPD(e,emp.id,dS,dSl,k)}><div className="fill"/>{iS&&<span className="entlabel">{hh(t0+dS*30)}</span>}</div>;}
+              if(isFreeEditable) return <div key={k} className={`cell ${he?"hourend":""} ${band?"band":""}`} style={{cursor:"pointer"}} onClick={()=>addShiftAt(emp,k)}>{k===Math.floor(slotCount/2)-3&&<span className="entlabel" style={{color:"var(--ink-3)",fontWeight:600,textShadow:"none"}}>+ Añadir turno</span>}</div>;
               return <div key={k} className={`cell ${he?"hourend":""} ${band?"band":""}`}/>;
             })}</div>
           </div>
