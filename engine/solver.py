@@ -28,6 +28,9 @@ WU_BAND    = 5    # under montaje/cierre min
 WO_BAND_SQ = 1    # over montaje/cierre max (quadratic)
 W_STAB     = 2    # shift-time stability
 
+# Bases parciales con días/horas realistas (no repartidas entre dpw días).
+PARTTIME_BASES = {8: (2, 4), 12: (2, 6), 16: (4, 4)}  # weekly_hours: (días, horas_por_día)
+
 
 def _tm(t):
     h, m = map(int, t.split(":"))
@@ -158,7 +161,11 @@ def solve(data):
     warns = []
     EI = []
     for e in EMP:
-        hpd   = e["weekly_hours"] / dpw
+        wh_ = e["weekly_hours"]
+        if wh_ in PARTTIME_BASES:
+            base_days, hpd = PARTTIME_BASES[wh_]
+        else:
+            base_days, hpd = dpw, wh_ / dpw
         L     = round(hpd * 2)
         fixed = e.get("fixed") or {}
         av    = e.get("availability", "F")
@@ -173,7 +180,7 @@ def solve(data):
                 abs_days[dd] = "vacation"
 
         # target = contract days minus absences, capped by feasible days
-        contract_td = max(0, dpw - len(abs_days))
+        contract_td = max(0, base_days - len(abs_days))
 
         feasible_days = 0
         infeasible_reasons = []

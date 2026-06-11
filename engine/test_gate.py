@@ -459,6 +459,31 @@ for eid in ["RC1","RC2","RC3"]:
     d_on = sum(1 for v in ro["schedule"].get(eid,{}).values() if v.get("code")=="normal")
     check(f"  {eid} works 5 days", d_on == 5, f"got {d_on}")
 
+# ── (p) Bases parciales: días/horas realistas ───────────────────────
+print("\n(p) Bases parciales 8/12/16 (F, tienda L-D, sin ausencias) + control 25")
+rp = solve({
+    "department": {"id":"pt","name":"PartTime"},
+    "params": BASE,
+    "employees": [
+        {"id":"P8", "name":"Part, Ocho",        "weekly_hours":8,  "availability":"F"},
+        {"id":"P12","name":"Part, Doce",        "weekly_hours":12, "availability":"F"},
+        {"id":"P16","name":"Part, Dieciseis",   "weekly_hours":16, "availability":"F"},
+        {"id":"P25","name":"Ctrl, Veinticinco", "weekly_hours":25, "availability":"F"},
+    ],
+})
+check("status OK", rp["status"] in ("OPTIMAL","FEASIBLE"), rp["status"])
+for eid, exp_days, exp_hpd, exp_total in [("P8",2,4,8),("P12",2,6,12),("P16",4,4,16),("P25",5,5,25)]:
+    work = {d: v for d, v in rp["schedule"].get(eid,{}).items() if v.get("code")=="normal"}
+    days  = len(work)
+    total = round(sum(v.get("hours",0) for v in work.values()), 2)
+    check(f"  {eid} works {exp_days} days", days == exp_days, f"got {days}")
+    check(f"  {eid} every day = {exp_hpd}h",
+          all(round(v.get('hours',0),2)==exp_hpd for v in work.values()),
+          f"got {sorted({round(v.get('hours',0),2) for v in work.values()})}")
+    check(f"  {eid} total = {exp_total}h", total == exp_total, f"got {total}")
+    print(f"     {eid}: " + ", ".join(f"{d} {v['start']}-{v['end']} ({v['hours']}h)"
+                                       for d,v in work.items()))
+
 # ── summary ────────────────────────────────────────────────────────
 print(f"\n{'='*50}")
 print(f"  {PASS} passed, {FAIL} failed")
