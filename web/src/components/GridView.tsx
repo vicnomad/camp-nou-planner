@@ -354,14 +354,12 @@ function DayGrid({day,params,storeHours,employees,allEmployees,inactiveIds,weekO
 
   const dpw=params.days_per_week??5;
 
-  // Añadir turno tocando un día libre: start = celda clicada, clampada a [apertura, fin−jornada];
-  // horas = jornada estándar de la persona (múltiplos de 0,5h). La fila se vuelve "working" sola.
-  function addShiftAt(emp:Employee,k:number){
-    const dur=Math.max(1,Math.round((emp.weekly_hours/dpw)*2)); // slots de 30 min
-    const openSlot=Math.max(0,Math.round((openM-t0)/30));
-    const maxStartSlot=Math.max(openSlot,slotCount-dur);
-    const startSlot=Math.max(openSlot,Math.min(k,maxStartSlot));
-    onManualEdit(emp.id,day,hh(t0+startSlot*30),dur/2);
+  // Añadir turno en un día libre: empieza en la APERTURA; horas = jornada estándar (múltiplos de 0,5h),
+  // recortado si no cabe antes del final del grid. La fila se vuelve "working" sola y ya se arrastra.
+  function addShiftFromOpen(emp:Employee){
+    const want=Math.max(1,Math.round((emp.weekly_hours/dpw)*2)); // slots de 30 min
+    const dur=Math.min(want,Math.max(1,Math.round((endM-openM)/30)));
+    onManualEdit(emp.id,day,hh(openM),dur/2);
   }
 
   // Show all employees (active + inactive grayed)
@@ -410,13 +408,11 @@ function DayGrid({day,params,storeHours,employees,allEmployees,inactiveIds,weekO
                 <div className="nm"><b>{emp.name}</b><span>{(() => { const av = emp.availability; const label = typeof av === "string" ? av : "⋯"; const cls = typeof av === "string" ? av : "F"; return <span className={`pill p-${cls}`}>{label}</span>; })()}{emp.fixed&&<svg className="lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>}</span></div>
               </div>
               <div className="c-base"><b>{emp.weekly_hours}</b></div>
-              <div className="c-ent">{inactive?"INACT":isWorking?(
-                <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",gap:3}}>
-                  {entry?.start}
-                  <button title="Poner Libre" onClick={e=>{e.stopPropagation();e.preventDefault();onSetOff(emp.id,day);}}
-                    style={{border:"none",background:"transparent",cursor:"pointer",color:"var(--ink-3)",fontSize:12,lineHeight:1,padding:0,fontWeight:700}}>✕</button>
-                </span>
-              ):isVac?(entry?.code??"VCN").toUpperCase():"DLB"}</div>
+              <div className="c-ent">{inactive?"INACT":isWorking?entry?.start:isVac?(entry?.code??"VCN").toUpperCase():isFreeEditable?(
+                <button className="shiftadd" title="Añadir turno" onClick={()=>addShiftFromOpen(emp)}>
+                  <svg viewBox="0 0 24 24" style={{width:12,height:12,stroke:"currentColor",strokeWidth:2.5,fill:"none",strokeLinecap:"round"}}><path d="M12 6v12M6 12h12"/></svg>
+                </button>
+              ):"DLB"}</div>
               <div className="c-tot"><b>{isWorking?entry?.hours:0}</b></div>
               <div className="c-compl" style={{color:dayCompl>0?"#b87800":"var(--ink-3)"}}><b style={{fontFamily:"'Spline Sans Mono'",fontSize:11}}>{dayCompl>0?`${dayCompl}h`:"0h"}</b></div>
             </div>
@@ -424,8 +420,7 @@ function DayGrid({day,params,storeHours,employees,allEmployees,inactiveIds,weekO
               const m=t0+k*30;const band=isBand(m);const he=(m+30)%60===0;
               if(isVac) return <div key={k} className={`cell w vac ${k===0?"s":""} ${k===slotCount-1?"e":""} ${he?"hourend":""}`} style={{"--dc":color} as React.CSSProperties}><div className="fill"/>{k===Math.floor(slotCount/2)&&<span className="entlabel dark">{(entry?.code??"AUS").toUpperCase().slice(0,3)}</span>}</div>;
               const inS=isWorking&&k>=dS&&k<dS+dSl;
-              if(inS){const iS=k===dS,iE=k===dS+dSl-1;const comp=(k-dS)>=normRemSlots;return <div key={k} className={`cell w ${iS?"s":""} ${iE?"e":""} ${he?"hourend":""} ${band?"band":""}`} style={{"--dc":comp?"#d4940a":color,cursor:"grab"} as React.CSSProperties} onPointerDown={e=>onPD(e,emp.id,dS,dSl,k)}><div className="fill"/>{iS&&<span className="entlabel">{hh(t0+dS*30)}</span>}</div>;}
-              if(isFreeEditable) return <div key={k} className={`cell ${he?"hourend":""} ${band?"band":""}`} style={{cursor:"pointer"}} onClick={()=>addShiftAt(emp,k)}>{k===Math.floor(slotCount/2)-3&&<span className="entlabel" style={{color:"var(--ink-3)",fontWeight:600,textShadow:"none"}}>+ Añadir turno</span>}</div>;
+              if(inS){const iS=k===dS,iE=k===dS+dSl-1;const comp=(k-dS)>=normRemSlots;return <div key={k} className={`cell w ${iS?"s":""} ${iE?"e":""} ${he?"hourend":""} ${band?"band":""}`} style={{"--dc":comp?"#d4940a":color,cursor:"grab"} as React.CSSProperties} onPointerDown={e=>onPD(e,emp.id,dS,dSl,k)}><div className="fill"/>{iS&&<span className="entlabel">{hh(t0+dS*30)}</span>}{iE&&<button className="shiftdel" title="Poner Libre" onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();e.preventDefault();onSetOff(emp.id,day);}}><svg viewBox="0 0 24 24" style={{width:11,height:11,stroke:"currentColor",strokeWidth:3,fill:"none",strokeLinecap:"round"}}><path d="M6 12h12"/></svg></button>}</div>;}
               return <div key={k} className={`cell ${he?"hourend":""} ${band?"band":""}`}/>;
             })}</div>
           </div>

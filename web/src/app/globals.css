@@ -122,6 +122,14 @@ body{font-family:'Hanken Grotesk',sans-serif;background:var(--canvas);color:var(
 .cell.vac .fill{background:repeating-linear-gradient(45deg,#eebf52,#eebf52 4px,#f7da90 4px,#f7da90 8px)!important}
 .entlabel{position:absolute;top:50%;left:6px;transform:translateY(-50%);font-family:'Spline Sans Mono';font-size:9.5px;color:#fff;font-weight:600;white-space:nowrap;z-index:2;pointer-events:none;text-shadow:0 1px 2px rgba(0,0,0,.22)}
 .entlabel.dark{color:#7a5500;text-shadow:none}
+/* poner Libre: botón "−" al final del turno, visible al pasar el ratón por la fila */
+.shiftdel{position:absolute;top:50%;right:-9px;transform:translateY(-50%);width:18px;height:18px;border-radius:50%;border:none;background:var(--paper);box-shadow:0 1px 4px rgba(17,25,43,.22);color:var(--ink-3);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;z-index:6;opacity:0;transition:opacity .12s,color .12s}
+.grow:hover .shiftdel{opacity:1}
+.shiftdel:hover{color:var(--bad)}
+@media(hover:none){.shiftdel{opacity:.35}}
+/* añadir turno: botón "+" en la columna de entrada de un día libre */
+.shiftadd{width:20px;height:20px;border-radius:50%;border:1px solid var(--line);background:transparent;color:var(--ink-3);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0;transition:border-color .12s,color .12s,background .12s}
+.shiftadd:hover{border-color:var(--garnet);color:var(--garnet);background:rgba(165,0,68,.06)}
 
 /* time header */
 .ghead{position:sticky;top:0;z-index:8;background:var(--paper)}
