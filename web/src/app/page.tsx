@@ -66,6 +66,7 @@ export default function Home() {
 
   // Load departments
   useEffect(() => {
+    if (!authUser) return;
     const unsub = onSnapshot(collection(db, "departments"), (snap) => {
       const depts = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Department[];
       depts.sort((a, b) => a.name.localeCompare(b.name));
@@ -73,10 +74,11 @@ export default function Home() {
       if (!currentDeptId && depts.length > 0) setCurrentDeptId(depts[0].id);
     });
     return unsub;
-  }, [currentDeptId]);
+  }, [currentDeptId, authUser]);
 
   // Load employees
   useEffect(() => {
+    if (!authUser) return;
     if (!currentDeptId) return;
     const q = query(collection(db, "employees"), where("department", "==", currentDeptId));
     const unsub = onSnapshot(q, (snap) => {
@@ -85,11 +87,12 @@ export default function Home() {
       setEmployees(emps);
     });
     return unsub;
-  }, [currentDeptId]);
+  }, [currentDeptId, authUser]);
 
   // Load saved schedule + overrides when dept or week changes
   const weekDocId = currentDeptId ? `${currentDeptId}_${weekIsoId(weekMonday)}` : null;
   useEffect(() => {
+    if (!authUser) return;
     setSchedule(null); // blank until loaded
     setWeekOverrides({});
     setScheduleEdits({});
@@ -109,7 +112,7 @@ export default function Home() {
     getDoc(doc(db, "scheduleEdits", weekDocId)).then((snap) => {
       if (snap.exists()) setScheduleEdits(snap.data() as ScheduleEdits);
     });
-  }, [weekDocId]);
+  }, [weekDocId, authUser]);
 
   // Horario EFECTIVO = generado + ediciones manuales. Única fuente para export/ficha/grid.
   const effectiveSchedule = mergeSchedule(schedule, scheduleEdits);
