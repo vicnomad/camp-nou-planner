@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { db } from "@/lib/firebase";
+import { db, auth } from "@/lib/firebase";
+import { signOut } from "firebase/auth";
 import { doc, setDoc, deleteDoc, collection, query, where, getDocs, updateDoc } from "firebase/firestore";
 import type { Department, Employee } from "@/lib/types";
 import type { ViewId } from "@/app/page";
@@ -182,6 +183,20 @@ export default function Sidebar({
           </a>
         ))}
       </nav>
+
+      {/* Cerrar sesión (Firebase Auth). El gate de page.tsx vuelve a mostrar el login al instante. */}
+      <button onClick={() => signOut(auth)} style={{
+        marginTop: "auto", display: "flex", alignItems: "center", gap: 9,
+        background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)",
+        color: "#cfd8ec", borderRadius: 9, padding: "9px 12px", cursor: "pointer",
+        fontFamily: "inherit", fontSize: 12.5, fontWeight: 600,
+        position: "relative", zIndex: 1,
+      }}>
+        <svg className="ico" viewBox="0 0 24 24" style={{ width: 15, height: 15 }}>
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
+        </svg>
+        Cerrar sesión
+      </button>
 
       {/* DEPARTMENT MODAL (create/edit) */}
       {modal.open && (
