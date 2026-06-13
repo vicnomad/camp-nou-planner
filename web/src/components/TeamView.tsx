@@ -117,7 +117,7 @@ export default function TeamView({
       weekly_hours: hoursToWrite,
       availability: e.availability ?? "F",
       fixed: e.fixed ?? null,
-      absences: e.absences ?? [],
+      absences: [], // las ausencias son por semana (weekOverrides), no en el doc global
     });
     setModal({ open: false, employee: null, isNew: false });
     showToast(modal.isNew ? "Persona añadida" : "Persona actualizada");
@@ -176,7 +176,7 @@ export default function TeamView({
             <tbody>
               {filtered.map((emp) => {
                 const hpd = emp.weekly_hours / (department.params?.days_per_week ?? 5);
-                const vac = vacDaysCount(emp.absences ?? []);
+                const vac = vacDaysCount(weekOverrides[emp.id]?.absences ?? []);
                 const ov = weekOverrides[emp.id];
                 const hasOv = !!ov;
                 const isInactive = ov?.active === false;
@@ -278,7 +278,8 @@ function EmployeeModal({
   const [ov, setOv] = useState<WeekOverride>(weekOverride ?? {});
   const [absenceType, setAbsenceType] = useState("VCN");
   const hasFixed = !!employee.fixed;
-  const absences = employee.absences ?? [];
+  // Las ausencias son POR SEMANA: viven en el override (estado ov), no en el doc global del empleado.
+  const absences = ov.absences ?? [];
 
   // Build a map: day -> absence code
   const dayAbsenceMap: Record<string, string> = {};
@@ -329,7 +330,12 @@ function EmployeeModal({
       grouped[code].push(d);
     }
     const newAbsences: Absence[] = Object.entries(grouped).map(([type, days]) => ({ type, days }));
-    onChange({ ...employee, absences: newAbsences });
+    // Actualiza y PERSISTE el override de la semana al instante (no en el doc global).
+    const next: WeekOverride = { ...ov };
+    if (newAbsences.length > 0) next.absences = newAbsences; else delete next.absences;
+    (Object.keys(next) as (keyof WeekOverride)[]).forEach((k) => { if (next[k] === undefined) delete next[k]; });
+    setOv(next);
+    onSaveOverride(Object.keys(next).length > 0 ? next : null);
   }
 
   return (

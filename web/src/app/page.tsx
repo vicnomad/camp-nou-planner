@@ -5,7 +5,7 @@ import { db } from "@/lib/firebase";
 import {
   collection, onSnapshot, query, where, doc, updateDoc, getDoc, deleteDoc,
 } from "firebase/firestore";
-import type { Department, Employee, SolveResult } from "@/lib/types";
+import type { Department, Employee, SolveResult, Absence } from "@/lib/types";
 import { DAYS_KEYS } from "@/lib/types";
 import { getMonday, fmtDate, weekIsoId, isoWeekNumber } from "@/lib/week";
 import { exportCegidXlsx } from "@/lib/exportCegid";
@@ -23,6 +23,7 @@ export interface WeekOverride {
   availability?: "M" | "T" | "F";
   fixed?: Record<string, string> | null;
   active?: boolean;
+  absences?: Absence[];
 }
 
 // Old CSV export removed — now uses exportCegidXlsx from lib/exportCegid
@@ -105,15 +106,17 @@ export default function Home() {
   // Horario EFECTIVO = generado + ediciones manuales. Única fuente para export/ficha/grid.
   const effectiveSchedule = mergeSchedule(schedule, scheduleEdits);
 
-  // Compute effective employees (base + week overrides)
+  // Compute effective employees (base + week overrides).
+  // Las ausencias son SIEMPRE por semana: se toman del override (o [] si no hay);
+  // las ausencias globales del empleado se ignoran.
   const effectiveEmployees = employees.map((emp) => {
     const ov = weekOverrides[emp.id];
-    if (!ov) return emp;
     return {
       ...emp,
-      ...(ov.weekly_hours !== undefined ? { weekly_hours: ov.weekly_hours } : {}),
-      ...(ov.availability !== undefined ? { availability: ov.availability } : {}),
-      ...(ov.fixed !== undefined ? { fixed: ov.fixed } : {}),
+      ...(ov?.weekly_hours !== undefined ? { weekly_hours: ov.weekly_hours } : {}),
+      ...(ov?.availability !== undefined ? { availability: ov.availability } : {}),
+      ...(ov?.fixed !== undefined ? { fixed: ov.fixed } : {}),
+      absences: ov?.absences ?? [],
     };
   });
   const activeEmployees = effectiveEmployees.filter((emp) => {
