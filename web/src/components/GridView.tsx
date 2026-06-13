@@ -5,7 +5,7 @@ import { db } from "@/lib/firebase";
 import { doc, setDoc, getDoc, deleteDoc } from "firebase/firestore";
 import type { Department, Employee, SolveResult, ScheduleEntry, CoverageSlot, DayKey, StoreHours } from "@/lib/types";
 import { DAYS_KEYS, DAY_LABELS, DAY_SHORT } from "@/lib/types";
-import { weekLabel, shiftWeek, weekIsoId } from "@/lib/week";
+import { weekLabel, weekIsoId } from "@/lib/week";
 import { weekComplSplit } from "@/lib/weekCompl";
 import { mergeSchedule, editedDays, editedDaysOf, hasEdits, type ScheduleEdits } from "@/lib/schedule";
 import { printA3 } from "@/lib/printA3";
@@ -21,14 +21,14 @@ interface Props {
   schedule: SolveResult | null; onSchedule: (r: SolveResult | null) => void;
   scheduleEdits: ScheduleEdits; onScheduleEditsChange: (e: ScheduleEdits) => void;
   showToast: (msg: string) => void; generateRef: MutableRefObject<(() => void) | null>;
-  weekMonday: string; onWeekChange: (m: string) => void;
+  weekMonday: string;
 }
 
 function hh(m: number) { const x=((m%1440)+1440)%1440; return String(Math.floor(x/60)).padStart(2,"0")+":"+String(x%60).padStart(2,"0"); }
 function tm(t: string) { const [h,m]=t.split(":").map(Number); return h*60+m; }
 function initials(name: string) { return name.split(",")[0].slice(0,2).toUpperCase(); }
 
-export default function GridView({ department, employees, allEmployees, weekOverrides, schedule, onSchedule, scheduleEdits, onScheduleEditsChange, showToast, generateRef, weekMonday, onWeekChange }: Props) {
+export default function GridView({ department, employees, allEmployees, weekOverrides, schedule, onSchedule, scheduleEdits, onScheduleEditsChange, showToast, generateRef, weekMonday }: Props) {
   const [mode, setMode] = useState<"dia"|"semana">("dia");
   const [dayIdx, setDayIdx] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -170,11 +170,6 @@ export default function GridView({ department, employees, allEmployees, weekOver
   return (
     <>
       <div className="gridbar">
-        <div style={{display:"flex",alignItems:"center",gap:4,background:"var(--paper)",border:"1px solid var(--line)",borderRadius:11,padding:"3px 4px",boxShadow:"var(--shadow)"}}>
-          <button onClick={()=>onWeekChange(shiftWeek(weekMonday,-1))} style={{border:"none",background:"transparent",cursor:"pointer",padding:"5px 8px",borderRadius:8,fontSize:14,color:"var(--ink-2)",fontWeight:700}}>‹</button>
-          <span style={{fontFamily:"'Spline Sans Mono'",fontSize:12,fontWeight:600,padding:"0 6px",whiteSpace:"nowrap"}}>{weekLabel(weekMonday)}</span>
-          <button onClick={()=>onWeekChange(shiftWeek(weekMonday,1))} style={{border:"none",background:"transparent",cursor:"pointer",padding:"5px 8px",borderRadius:8,fontSize:14,color:"var(--ink-2)",fontWeight:700}}>›</button>
-        </div>
         <div className="gridtoggle">
           <button className={`gt ${mode==="dia"?"active":""}`} onClick={()=>setMode("dia")}>Por día</button>
           <button className={`gt ${mode==="semana"?"active":""}`} onClick={()=>setMode("semana")}>Semana completa</button>

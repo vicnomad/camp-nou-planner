@@ -7,7 +7,7 @@ import {
 } from "firebase/firestore";
 import type { Department, Employee, SolveResult, Absence } from "@/lib/types";
 import { DAYS_KEYS } from "@/lib/types";
-import { getMonday, fmtDate, weekIsoId, isoWeekNumber } from "@/lib/week";
+import { getMonday, fmtDate, weekIsoId, isoWeekNumber, weekLabel, shiftWeek } from "@/lib/week";
 import { exportCegidXlsx } from "@/lib/exportCegid";
 import { mergeSchedule, type ScheduleEdits } from "@/lib/schedule";
 import Sidebar from "@/components/Sidebar";
@@ -155,6 +155,12 @@ export default function Home() {
               <p>{activeEmployees.length} personas &middot; {totalHours} h / semana</p>
             </div>
           </div>
+          {/* Selector de semana — SIEMPRE visible (todas las vistas) */}
+          <div style={{display:"flex",alignItems:"center",gap:4,background:"var(--paper)",border:"1px solid var(--line)",borderRadius:11,padding:"3px 4px",boxShadow:"var(--shadow)"}}>
+            <button onClick={()=>setWeekMonday(shiftWeek(weekMonday,-1))} style={{border:"none",background:"transparent",cursor:"pointer",padding:"5px 8px",borderRadius:8,fontSize:14,color:"var(--ink-2)",fontWeight:700}}>‹</button>
+            <span style={{fontFamily:"'Spline Sans Mono'",fontSize:12,fontWeight:600,padding:"0 6px",whiteSpace:"nowrap"}}>{weekLabel(weekMonday)}</span>
+            <button onClick={()=>setWeekMonday(shiftWeek(weekMonday,1))} style={{border:"none",background:"transparent",cursor:"pointer",padding:"5px 8px",borderRadius:8,fontSize:14,color:"var(--ink-2)",fontWeight:700}}>›</button>
+          </div>
           <div className="spacer" />
           {view === "grid" && effectiveSchedule && currentDept && (
             <button className="btn btn-ghost" onClick={() => exportCegidXlsx(currentDept.name, activeEmployees, effectiveSchedule, weekMonday, dpw, scheduleEdits)}>
@@ -198,7 +204,7 @@ export default function Home() {
               schedule={schedule} onSchedule={setSchedule}
               scheduleEdits={scheduleEdits} onScheduleEditsChange={setScheduleEdits}
               showToast={showToast} generateRef={generateRef}
-              weekMonday={weekMonday} onWeekChange={setWeekMonday}
+              weekMonday={weekMonday}
             />
           )}
           {view === "team" && currentDept && (
