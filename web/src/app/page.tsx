@@ -270,23 +270,57 @@ function AccessGate() {
   }, [pwd, busy]);
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div className="card cardpad" style={{ width: "100%", maxWidth: 360, textAlign: "center" }}>
-        <div style={{ width: 46, height: 46, borderRadius: 12, background: "var(--garnet)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 22, margin: "0 auto 14px" }}>C</div>
-        <h2 style={{ margin: "0 0 18px", color: "var(--garnet)" }}>Camp Nou Planner</h2>
-        <input
-          type="password"
-          value={pwd}
-          onChange={(e) => setPwd(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
-          placeholder="Contraseña"
-          autoFocus
-          style={{ width: "100%", padding: "11px 13px", borderRadius: 10, border: "1px solid var(--line)", fontSize: 15, boxSizing: "border-box" }}
-        />
-        {error && <p style={{ color: "var(--bad)", fontSize: 13, margin: "10px 0 0" }}>{error}</p>}
-        <button className="btn btn-go" onClick={submit} disabled={busy} style={{ width: "100%", marginTop: 14, justifyContent: "center" }}>
-          {busy ? "Entrando…" : "Entrar"}
-        </button>
+    <div className="ag-screen">
+      <style>{`
+        .ag-screen{position:relative;min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:24px;
+          background:linear-gradient(150deg,#5e0030 0%,#a50044 40%,#1c1740 80%,#001a44 100%);overflow:hidden}
+        .ag-screen::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.06;
+          background:repeating-linear-gradient(115deg,#fff 0 2px,transparent 2px 26px)}
+        .ag-card{position:relative;background:#fff;border-radius:18px;box-shadow:0 24px 60px rgba(0,0,0,.28);
+          padding:36px 32px;width:min(92vw,380px)}
+        .ag-wordmark{display:flex;align-items:center;gap:11px}
+        .ag-bars{display:flex;gap:3px}
+        .ag-bars span{width:5px;height:22px;border-radius:2px}
+        .ag-title{font-family:'Archivo',sans-serif;font-weight:800;font-size:22px;color:var(--garnet);letter-spacing:-.01em;margin:0}
+        .ag-sub{font-family:'Hanken Grotesk',sans-serif;font-size:12.5px;color:#8a8a93;margin:6px 0 26px}
+        .ag-label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#9a9aa2;margin-bottom:7px}
+        .ag-input{width:100%;height:46px;border:1.5px solid var(--line);border-radius:11px;padding:0 14px;font-size:16px;
+          letter-spacing:.18em;background:#fbfbfc;outline:none;box-sizing:border-box;transition:border-color .15s,box-shadow .15s,background .15s}
+        .ag-input:focus{border-color:var(--garnet);box-shadow:0 0 0 3px rgba(165,0,68,.12);background:#fff}
+        .ag-error{color:var(--bad);font-size:12.5px;margin:8px 0 0}
+        .ag-btn{width:100%;height:46px;margin-top:18px;border:none;border-radius:11px;background:var(--garnet);color:#fff;
+          font-family:'Archivo',sans-serif;font-weight:700;font-size:15px;cursor:pointer;transition:background .15s}
+        .ag-btn:hover{background:#8a0039}
+        .ag-btn:active{transform:translateY(1px)}
+        .ag-btn:disabled{opacity:.7;cursor:default}
+        .ag-foot{position:relative;text-align:center;color:rgba(255,255,255,.7);font-size:11px;margin-top:22px}
+      `}</style>
+      <div>
+        <div className="ag-card">
+          <div className="ag-wordmark">
+            <div className="ag-bars">
+              <span style={{ background: "#a50044" }} />
+              <span style={{ background: "#004d98" }} />
+            </div>
+            <h1 className="ag-title">Camp Nou Planner</h1>
+          </div>
+          <p className="ag-sub">Planificador de cuadrantes</p>
+          <label className="ag-label" htmlFor="ag-pwd">Contraseña</label>
+          <input
+            id="ag-pwd"
+            className="ag-input"
+            type="password"
+            value={pwd}
+            onChange={(e) => setPwd(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+            autoFocus
+          />
+          {error && <p className="ag-error">{error}</p>}
+          <button className="ag-btn" onClick={submit} disabled={busy}>
+            {busy ? "Entrando…" : "Entrar"}
+          </button>
+        </div>
+        <p className="ag-foot">Acceso restringido · FC Barcelona Store</p>
       </div>
     </div>
   );
