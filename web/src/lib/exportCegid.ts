@@ -5,7 +5,7 @@
 import type { Employee, SolveResult, DayKey } from "./types";
 import { DAYS_KEYS } from "./types";
 import { isoWeekNumber } from "./week";
-import { weekComplSplit } from "./weekCompl";
+import { weekComplSplit, effectiveContract } from "./weekCompl";
 import { editedDaysOf, type ScheduleEdits } from "./schedule";
 
 // Code → color mapping for DIA column
@@ -70,7 +70,7 @@ export async function exportCegidXlsx(
     row.height = 13;
     const hpd = emp.weekly_hours / dpw;
     // Weekly split: normales = min(Σ_semana, contrato); el exceso recae en los días editados a mano.
-    const split = weekComplSplit(schedule.schedule?.[emp.id], emp.weekly_hours, hpd, editedDaysOf(edits, emp.id));
+    const split = weekComplSplit(schedule.schedule?.[emp.id], effectiveContract(emp, hpd), hpd, editedDaysOf(edits, emp.id));
 
     // A = name
     const cA = row.getCell(1);

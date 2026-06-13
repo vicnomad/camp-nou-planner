@@ -4,7 +4,7 @@
  */
 import type { Department, Employee, SolveResult, StoreHours } from "./types";
 import { DAYS_KEYS } from "./types";
-import { weekComplSplit } from "./weekCompl";
+import { weekComplSplit, effectiveContract } from "./weekCompl";
 import { editedDaysOf, type ScheduleEdits } from "./schedule";
 
 const DAY_ES: Record<string, string> = {
@@ -28,7 +28,7 @@ export function printA3(
 
   // Weekly split per employee: el exceso recae en los días editados a mano (luego MON→SUN).
   const splitByEmp = new Map(employees.map(e =>
-    [e.id, weekComplSplit(sched.schedule?.[e.id], e.weekly_hours, e.weekly_hours / dpw, editedDaysOf(edits, e.id))] as const));
+    [e.id, weekComplSplit(sched.schedule?.[e.id], effectiveContract(e, e.weekly_hours / dpw), e.weekly_hours / dpw, editedDaysOf(edits, e.id))] as const));
 
   // Build each day block
   let blocks = "";

@@ -18,6 +18,24 @@
 import type { ScheduleEntry, DayKey } from "./types";
 import { DAYS_KEYS } from "./types";
 
+// Ausencias que restan días de contrato (mismo conjunto que el motor: solver.py ABSENCE_REDUCES).
+// El DLB (día libre) NO resta. Los códigos reales de la app: VCN/VAA/FRC/DEC/BJA (+ legacy "vacation").
+export const ABSENCE_REDUCES = new Set(["VCN", "VAA", "FRC", "DEC", "BJA", "vacation"]);
+
+/**
+ * Base EFECTIVA de la semana = contrato − (días de ausencia reductora × jornada estándar).
+ * Es la base contra la que se cuentan complementarias y "faltan". Cuadra con el motor (#3),
+ * que genera menos días por esas ausencias. El DLB no resta (no aparece falso "faltan").
+ */
+export function effectiveContract(
+  emp: { weekly_hours: number; absences?: { type: string; days?: string[] }[] },
+  dailyStd: number,
+): number {
+  const reducingDays = (emp.absences ?? []).reduce(
+    (n, a) => ABSENCE_REDUCES.has(a.type) ? n + (Array.isArray(a.days) ? a.days.length : 0) : n, 0);
+  return Math.max(0, emp.weekly_hours - reducingDays * dailyStd);
+}
+
 export interface DaySplit {
   hours: number; // horas trabajadas ese día
   norm: number;  // parte normal (verde) de ese día
