@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { db } from "@/lib/firebase";
+import { db, auth } from "@/lib/firebase";
+import { onAuthStateChanged, signInWithEmailAndPassword, type User } from "firebase/auth";
 import {
   collection, onSnapshot, query, where, doc, updateDoc, getDoc, deleteDoc,
 } from "firebase/firestore";
@@ -17,6 +18,8 @@ import GridView from "@/components/GridView";
 import BillingView from "@/components/BillingView";
 
 export type ViewId = "grid" | "team" | "params" | "billing";
+
+const ACCESS_EMAIL = "acceso@camp-nou-planner.app";
 
 export interface WeekOverride {
   weekly_hours?: number;
@@ -40,6 +43,11 @@ export default function Home() {
   const [weekOverrides, setWeekOverrides] = useState<Record<string, WeekOverride>>({});
   const [scheduleEdits, setScheduleEdits] = useState<ScheduleEdits>({});
   const generateRef = useRef<(() => void) | null>(null);
+
+  // Puerta de acceso (Firebase Auth, sesión persistida).
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  useEffect(() => onAuthStateChanged(auth, (u) => { setAuthUser(u); setAuthReady(true); }), []);
 
   const currentDept = departments.find((d) => d.id === currentDeptId) ?? null;
 
@@ -132,6 +140,16 @@ export default function Home() {
 
   const totalHours = activeEmployees.reduce((s, e) => s + e.weekly_hours, 0);
   const dpw = currentDept?.params?.days_per_week ?? 5;
+
+  // Puerta: tras TODOS los hooks. Cargando / acceso / app.
+  if (!authReady) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink-3)" }}>
+        Cargando…
+      </div>
+    );
+  }
+  if (!authUser) return <AccessGate />;
 
   return (
     <>
@@ -229,5 +247,47 @@ export default function Home() {
         <span dangerouslySetInnerHTML={{ __html: toast ?? "" }} />
       </div>
     </>
+  );
+}
+
+// Pantalla de acceso: una sola contraseña; el email es fijo (todos los managers comparten cuenta).
+function AccessGate() {
+  const [pwd, setPwd] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = useCallback(async () => {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await signInWithEmailAndPassword(auth, ACCESS_EMAIL, pwd);
+    } catch {
+      setError("Contraseña incorrecta");
+    } finally {
+      setBusy(false);
+    }
+  }, [pwd, busy]);
+
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div className="card cardpad" style={{ width: "100%", maxWidth: 360, textAlign: "center" }}>
+        <div style={{ width: 46, height: 46, borderRadius: 12, background: "var(--garnet)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 22, margin: "0 auto 14px" }}>C</div>
+        <h2 style={{ margin: "0 0 18px", color: "var(--garnet)" }}>Camp Nou Planner</h2>
+        <input
+          type="password"
+          value={pwd}
+          onChange={(e) => setPwd(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+          placeholder="Contraseña"
+          autoFocus
+          style={{ width: "100%", padding: "11px 13px", borderRadius: 10, border: "1px solid var(--line)", fontSize: 15, boxSizing: "border-box" }}
+        />
+        {error && <p style={{ color: "var(--bad)", fontSize: 13, margin: "10px 0 0" }}>{error}</p>}
+        <button className="btn btn-go" onClick={submit} disabled={busy} style={{ width: "100%", marginTop: 14, justifyContent: "center" }}>
+          {busy ? "Entrando…" : "Entrar"}
+        </button>
+      </div>
+    </div>
   );
 }

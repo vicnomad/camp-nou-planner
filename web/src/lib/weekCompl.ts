@@ -72,8 +72,18 @@ export function weekComplSplit(
     total += hours[d];
   }
 
-  // 2) GATE semanal: si la semana no supera el contrato, no hay ámbar en ningún día
-  const weeklyCompl = Math.max(0, total - contract);
+  // 1.5) base EFECTIVA contada del PROPIO cuadrante (fuente de verdad): el motor escribe
+  // el código real de cada ausencia en sched[día] (DEC/VCN/FRC/...). Reducimos el contrato
+  // por cada día con ausencia reductora presente en `entries`. Así cuadra siempre con lo que
+  // se ve, aunque la ausencia se generara cuando era global y ya no esté en el override.
+  const reducingDays = DAYS_KEYS.reduce((n, d) => {
+    const c = entries?.[d]?.code;
+    return c && ABSENCE_REDUCES.has(c) ? n + 1 : n;
+  }, 0);
+  const effContract = Math.max(0, contract - reducingDays * dailyStd);
+
+  // 2) GATE semanal: si la semana no supera la base EFECTIVA, no hay ámbar en ningún día
+  const weeklyCompl = Math.max(0, total - effContract);
 
   // 3) reparto de la complementaria por día (Σ compl[d] === weeklyCompl)
   const compl = {} as Record<DayKey, number>;
@@ -106,9 +116,9 @@ export function weekComplSplit(
   return {
     days,
     total,
-    norm: Math.min(total, contract),
+    norm: Math.min(total, effContract),
     compl: weeklyCompl,
-    missing: Math.max(0, contract - total),
+    missing: Math.max(0, effContract - total),
     worked,
   };
 }

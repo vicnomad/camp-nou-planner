@@ -6,7 +6,7 @@ import { doc, setDoc, getDoc, deleteDoc } from "firebase/firestore";
 import type { Department, Employee, SolveResult, ScheduleEntry, CoverageSlot, DayKey, StoreHours } from "@/lib/types";
 import { DAYS_KEYS, DAY_LABELS, DAY_SHORT } from "@/lib/types";
 import { weekLabel, weekIsoId } from "@/lib/week";
-import { weekComplSplit, effectiveContract } from "@/lib/weekCompl";
+import { weekComplSplit } from "@/lib/weekCompl";
 import { mergeSchedule, editedDays, editedDaysOf, hasEdits, type ScheduleEdits } from "@/lib/schedule";
 import { printA3 } from "@/lib/printA3";
 import type { WeekOverride } from "@/app/page";
@@ -248,7 +248,7 @@ export default function GridView({ department, employees, allEmployees, weekOver
         let totalCompl = 0;
         const avisos: string[] = [];
         for (const emp of employees) {
-          const s = weekComplSplit(displaySchedule.schedule?.[emp.id], effectiveContract(emp, emp.weekly_hours / dpw2), emp.weekly_hours / dpw2, editedDaysOf(scheduleEdits, emp.id));
+          const s = weekComplSplit(displaySchedule.schedule?.[emp.id], emp.weekly_hours, emp.weekly_hours / dpw2, editedDaysOf(scheduleEdits, emp.id));
           totalCompl += s.compl;
           if (!s.worked) continue;
           if (s.compl > 0) avisos.push(`${emp.name}: ${s.compl}h complementarias`);
@@ -391,7 +391,7 @@ function DayGrid({day,params,storeHours,employees,allEmployees,inactiveIds,weekO
         const hpd = emp.weekly_hours/dpw;
         // Weekly split: las horas editadas a mano se reparten al final → la parte normal disponible
         // al empezar ESTE día (rem) ya descuenta lo no editado; el exceso del día editado sale compl aquí.
-        const rem = weekComplSplit(schedule.schedule?.[emp.id], effectiveContract(emp, hpd), hpd, editedDaysOf(scheduleEdits, emp.id)).days[day].rem;
+        const rem = weekComplSplit(schedule.schedule?.[emp.id], emp.weekly_hours, hpd, editedDaysOf(scheduleEdits, emp.id)).days[day].rem;
         const normRemSlots = Math.round(rem*2);
 
         let ssSlot=-1, shSlots=0;
@@ -483,7 +483,7 @@ function buildFichaText(empId: string, employees: Employee[], sched: SolveResult
   if (!emp) return "";
   const dpw = params.days_per_week ?? 5;
   const hpd = emp.weekly_hours / dpw;
-  const split = weekComplSplit(sched?.schedule?.[empId], effectiveContract(emp, hpd), hpd, editedDaysOf(scheduleEdits, empId));
+  const split = weekComplSplit(sched?.schedule?.[empId], emp.weekly_hours, hpd, editedDaysOf(scheduleEdits, empId));
   const lines = [`Horario · ${emp.name} · ${dept.name}`, weekLabel(weekMon), ""];
   DAYS_KEYS.forEach((d, i) => {
     const entry = sched?.schedule?.[empId]?.[d];
@@ -500,7 +500,7 @@ function FichaView({empId,employees,schedule,department,weekMonday:wm,params,sch
   if (!schedule) return <div className="card cardpad" style={{color:"var(--ink-3)",textAlign:"center",padding:30}}>Genera el cuadrante primero</div>;
   const dpw = params.days_per_week ?? 5;
   const hpd = emp.weekly_hours / dpw;
-  const split = weekComplSplit(schedule.schedule?.[empId], effectiveContract(emp, hpd), hpd, editedDaysOf(scheduleEdits, empId));
+  const split = weekComplSplit(schedule.schedule?.[empId], emp.weekly_hours, hpd, editedDaysOf(scheduleEdits, empId));
   return (
     <div className="card" style={{maxWidth:500}}>
       <div className="chead"><h3>{emp.name}</h3><span className="sub">{emp.weekly_hours}h/sem · {hpd}h/día</span></div>
