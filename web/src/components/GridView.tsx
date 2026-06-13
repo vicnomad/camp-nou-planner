@@ -407,7 +407,7 @@ function DayGrid({day,params,storeHours,employees,allEmployees,inactiveIds,weekO
                 <div className="avmini" style={{background:inactive?"#bbb":color}}>{initials(emp.name)}</div>
                 <div className="nm"><b>{emp.name}</b><span>{(() => { const av = emp.availability; const label = typeof av === "string" ? av : "⋯"; const cls = typeof av === "string" ? av : "F"; return <span className={`pill p-${cls}`}>{label}</span>; })()}{emp.fixed&&<svg className="lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>}</span></div>
               </div>
-              <div className="c-base"><b>{emp.weekly_hours}</b></div>
+              <div className="c-base"><b>{emp.weekly_hours}</b>{weekOverrides[emp.id]?.weekly_hours!==undefined&&<span title="Base puntual de esta semana" style={{display:"inline-block",width:5,height:5,borderRadius:3,background:"#d4940a",marginLeft:3,verticalAlign:"middle"}}/>}</div>
               <div className="c-ent">{inactive?"INACT":isWorking?entry?.start:isVac?(entry?.code??"VCN").toUpperCase():isFreeEditable?(
                 <button className="shiftadd" title="Añadir turno" onClick={()=>addShiftFromOpen(emp)}>
                   <svg viewBox="0 0 24 24" style={{width:12,height:12,stroke:"currentColor",strokeWidth:2.5,fill:"none",strokeLinecap:"round"}}><path d="M12 6v12M6 12h12"/></svg>

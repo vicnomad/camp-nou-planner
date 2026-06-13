@@ -96,11 +96,25 @@ export default function TeamView({
     const e = modal.employee;
     if (!e || !e.name || !e.dni) return;
     const docId = e.dni!;
+    let hoursToWrite = e.weekly_hours ?? 25;
+    // Proteger el contrato base GLOBAL: si en un empleado existente cambia weekly_hours,
+    // pedir confirmación (afecta a TODAS las semanas). El cambio puntual va por "Solo esta semana".
+    if (!modal.isNew) {
+      const orig = employees.find((x) => x.dni === e.dni);
+      if (orig && hoursToWrite !== orig.weekly_hours) {
+        const ok = confirm(
+          `Vas a cambiar el contrato base de ${e.name} a ${hoursToWrite}h. ` +
+          `Afecta a TODAS las semanas, incluidas las ya hechas.\n\n` +
+          `Para un cambio de una sola semana usa "Solo esta semana (S${weekNum})".\n\n¿Continuar?`
+        );
+        if (!ok) hoursToWrite = orig.weekly_hours; // no se toca la base; el resto sí se guarda
+      }
+    }
     await setDoc(doc(db, "employees", docId), {
       name: e.name,
       dni: e.dni,
       department: e.department ?? department.id,
-      weekly_hours: e.weekly_hours ?? 25,
+      weekly_hours: hoursToWrite,
       availability: e.availability ?? "F",
       fixed: e.fixed ?? null,
       absences: e.absences ?? [],
@@ -373,7 +387,7 @@ function EmployeeModal({
               </select>
             </div>
             <div className="form-field" style={{ flex: 1 }}>
-              <label>Contrato (h/semana)</label>
+              <label>Contrato base (fijo · afecta a TODAS las semanas)</label>
               <select
                 className="sel"
                 style={{ width: "100%" }}
@@ -478,10 +492,11 @@ function EmployeeModal({
               {Object.keys(ov).length > 0 && <span style={{ width: 7, height: 7, borderRadius: 4, background: "#d4940a" }} />}
             </div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 12 }}>
-              <div className="form-field" style={{ flex: 1, minWidth: 120, marginBottom: 8 }}>
-                <label>Horas (vacío = base)</label>
+              <div className="form-field" style={{ flex: 1, minWidth: 160, marginBottom: 8 }}>
+                <label>Solo esta semana (S{weekNum})</label>
                 <input className="form-input" type="number" placeholder={String(employee.weekly_hours ?? 25)}
                   value={ov.weekly_hours ?? ""} onChange={e => setOv({ ...ov, weekly_hours: e.target.value ? +e.target.value : undefined })} />
+                <span style={{ fontSize: 10, color: "var(--ink-3)", marginTop: 2, display: "block" }}>Cambio puntual; no afecta a otras semanas</span>
               </div>
               <div className="form-field" style={{ flex: 1, minWidth: 120, marginBottom: 8 }}>
                 <label>Disponibilidad</label>
