@@ -272,8 +272,8 @@ function AccessGate() {
   return (
     <div className="ag-screen">
       <style>{`
-        .ag-screen{position:relative;min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:24px;
-          background:linear-gradient(150deg,#5e0030 0%,#a50044 40%,#1c1740 80%,#001a44 100%);overflow:hidden}
+        .ag-screen{position:fixed;inset:0;z-index:50;overflow:auto;display:flex;align-items:center;justify-content:center;padding:24px;
+          background:linear-gradient(150deg,#5e0030 0%,#a50044 40%,#1c1740 80%,#001a44 100%)}
         .ag-screen::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.06;
           background:repeating-linear-gradient(115deg,#fff 0 2px,transparent 2px 26px)}
         .ag-card{position:relative;background:#fff;border-radius:18px;box-shadow:0 24px 60px rgba(0,0,0,.28);

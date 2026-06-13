@@ -5,7 +5,7 @@ service cloud.firestore {
     // con el SDK de Firestore. El comodín cubre TODAS las colecciones de la semana
     // (schedules, weekOverrides, scheduleEdits, weeks) y las base (departments, employees).
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if request.auth != null;
     }
   }
 }
