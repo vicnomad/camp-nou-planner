@@ -291,7 +291,36 @@ function EventModal({event,day,onSave,onRemove,onClose,hasEvent}:{event:WeekEven
   </div></div>;
 }
 
-/* Coverage recalc */
+/* ÚNICO cálculo del aconsejado por franja abierta, consciente de demand_mode y billing_pct.
+   Se usa tanto al recalcular cobertura al editar como al pintar la fila ACONSEJADO. */
+function computeTargetMap(day:DayKey,params:Department["params"],sh:StoreHours):Record<string,number> {
+  const out:Record<string,number>={};
+  const openM=tm(sh.open); const cr=tm(sh.close); const closeM=cr<=openM?cr+1440:cr;
+  const mode=params.demand_mode??"billing";
+  const billing=params.billing;
+  const prof=billing?.profiles?.[sh.special==="match"?"match":"normal"]??{};
+  if(mode==="cobertura"){
+    const bands=params.coverage_bands??[];
+    for(let m=openM;m<closeM;m+=30){
+      const x=m%1440; let tgt=0;
+      for(const b of bands){
+        const F=tm(b.from); const Traw=tm(b.to); const T=Traw<=F?Traw+1440:Traw;
+        if((x>=F&&x<T)||(x+1440>=F&&x+1440<T)){tgt=b.min;break;}
+      }
+      out[hh(m)]=tgt;
+    }
+  }else if(mode==="cajas"){
+    const store=billing?.daily?.[day]??0; const ticket=params.ticket_medio??25; const cpc=params.clients_per_cash_hour??15;
+    for(let m=openM;m<closeM;m+=30){const hr=Math.floor(m/60)%24;const p=prof[String(hr)]??0;out[hh(m)]=(p>0&&store>0&&ticket>0)?Math.max(1,Math.ceil(store*p/100/ticket/cpc)):0;}
+  }else{ // billing
+    const prod=billing?.productivity_eur_per_person_hour??420;
+    const deptBill=(billing?.daily?.[day]??0)*(params.billing_pct??100)/100;
+    for(let m=openM;m<closeM;m+=30){const hr=Math.floor(m/60)%24;const p=prof[String(hr)]??0;out[hh(m)]=(p>0&&deptBill>0)?Math.max(1,Math.round(deptBill*p/100/prod)):1;}
+  }
+  return out;
+}
+
+/* Coverage recalc — assigned igual que antes; target via computeTargetMap (único cálculo). */
 function recalcCoverage(day:DayKey,sched:SolveResult,employees:Employee[],params:Department["params"],storeHours:Record<string,StoreHours>):CoverageSlot[] {
   const sh=storeHours[day]; if(!sh) return [];
   const openM=tm(sh.open); const cr=tm(sh.close); const closeM=cr<=openM?cr+1440:cr;
@@ -299,8 +328,8 @@ function recalcCoverage(day:DayKey,sched:SolveResult,employees:Employee[],params
   let endM=postM; if(sh.extra){const et=tm(sh.extra.to);endM=Math.max(endM,et<=openM?et+1440:et);}
   const t0=preM; const n=Math.ceil((endM-t0)/30); const cov=new Array(n).fill(0);
   for(const emp of employees){const e=sched.schedule?.[emp.id]?.[day];if(!e||e.code!=="normal"||!e.start)continue;const s=tm(e.start);const sl=(e.hours??0)*2;for(let i=0;i<sl;i++){const idx=Math.round((s+i*30-t0)/30);if(idx>=0&&idx<n)cov[idx]++;}}
-  const billing=params.billing;const prod=billing?.productivity_eur_per_person_hour??420;const db2=billing?.daily?.[day]??0;const pn=sh.special==="match"?"match":"normal";const prof=billing?.profiles?.[pn]??{};
-  return cov.map((a,k)=>{const m=t0+k*30;const open=m>=openM&&m<closeM;let tgt=0;if(open&&db2>0){const hr=Math.floor(m/60)%24;const pct=prof[String(hr)]??0;tgt=pct>0?Math.max(1,Math.round(db2*pct/100/prod)):1;}return{time:hh(m),target:tgt,assigned:a};});
+  const tmap=computeTargetMap(day,params,sh);
+  return cov.map((a,k)=>{const m=t0+k*30;const open=m>=openM&&m<closeM;return{time:hh(m),target:open?(tmap[hh(m)]??0):0,assigned:a};});
 }
 
 /* DayGrid — with COMPL column, overrides indicators */
@@ -320,27 +349,8 @@ function DayGrid({day,params,storeHours,employees,allEmployees,inactiveIds,weekO
   const isBand=(m:number)=>m<openM||m>=closeM;
   const covMap:Record<string,CoverageSlot>={};(schedule.coverage?.[day]??[]).forEach(c=>{covMap[c.time]=c;});
 
-  // Live ACONSEJADO: computed from current params, not solver snapshot
-  const liveTarget:Record<string,number>={};
-  {
-    const mode2=params.demand_mode??"billing";
-    const billing=params.billing;
-    const prod=billing?.productivity_eur_per_person_hour??420;
-    const profName=sh.special==="match"?"match":"normal";
-    const prof=billing?.profiles?.[profName]??{};
-    if(mode2==="billing"){
-      const storeBill=billing?.daily?.[day]??0;
-      const pct2=params.billing_pct??100;
-      const deptBill=storeBill*pct2/100;
-      for(let m2=openM;m2<closeM;m2+=30){const hr=Math.floor(m2/60)%24;const p=prof[String(hr)]??0;liveTarget[hh(m2)]=(p>0&&deptBill>0)?Math.max(1,Math.round(deptBill*p/100/prod)):1;}
-    }else if(mode2==="cajas"){
-      const storeBill=billing?.daily?.[day]??0;
-      const ticket=params.ticket_medio??25;
-      const cpc=params.clients_per_cash_hour??15;
-      for(let m2=openM;m2<closeM;m2+=30){const hr=Math.floor(m2/60)%24;const p=prof[String(hr)]??0;liveTarget[hh(m2)]=(p>0&&storeBill>0&&ticket>0)?Math.max(1,Math.ceil(storeBill*p/100/ticket/cpc)):0;}
-    }
-    // cobertura: liveTarget stays empty, uses covMap.target as fallback
-  }
+  // ACONSEJADO: ÚNICO cálculo (mismo que recalcCoverage), consciente del modo y del % del dpto.
+  const targetMap=computeTargetMap(day,params,sh);
   const dragRef=useRef<{empId:string;mode:"move"|"start"|"end";origStart:number;origSlots:number;startX:number}|null>(null);
   const [dragPreview,setDragPreview]=useState<{empId:string;startSlot:number;slots:number}|null>(null);
   function onPD(e:React.PointerEvent,empId:string,ss:number,sl:number,ck:number){e.preventDefault();dragRef.current={empId,origStart:ss,origSlots:sl,mode:ck===ss?"start":ck===ss+sl-1?"end":"move",startX:e.clientX};setDragPreview({empId,startSlot:ss,slots:sl});(e.target as HTMLElement).setPointerCapture(e.pointerId);}
@@ -428,7 +438,7 @@ function DayGrid({day,params,storeHours,employees,allEmployees,inactiveIds,weekO
         <div className="cells">{Array.from({length:slotCount},(_,k)=>{
           const m=t0+k*30;const ts=hh(m);const cov=covMap[ts];const open=isOpen(m);const he=(m+30)%60===0;
           const a=cov?.assigned??0;
-          const tgt=liveTarget[ts]??covMap[ts]?.target??0; // live first, solver fallback
+          const tgt=targetMap[ts]??0;
           let bg="transparent",col="var(--ink-3)";
           if(open&&tgt>0){if(a<tgt){bg="#fdecec";col="var(--bad)";}else if(a===tgt){bg="#e7f4ee";col="var(--ok)";}else{bg="#fdf0d6";col="var(--gold-deep)";}}
           else if(a>0){bg="#f5f7fa";}
@@ -440,7 +450,7 @@ function DayGrid({day,params,storeHours,employees,allEmployees,inactiveIds,weekO
         <div className="gmeta"><div className="c-obs"/><div className="c-name" style={{fontSize:10,color:"var(--ink-3)"}}>ACONSEJADO</div><div className="c-base"/><div className="c-ent"/><div className="c-tot"/><div className="c-compl"/></div>
         <div className="cells">{Array.from({length:slotCount},(_,k)=>{
           const m=t0+k*30;const ts=hh(m);const open=isOpen(m);const he=(m+30)%60===0;
-          const tgt=liveTarget[ts]??covMap[ts]?.target??0;
+          const tgt=targetMap[ts]??0;
           return <div key={k} className={`ccell ${he?"hourend":""}`} style={{color:"var(--ink-3)",fontSize:10}}>{open&&tgt>0?tgt:""}</div>;
         })}</div>
       </div>
