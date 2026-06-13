@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { db, auth } from "@/lib/firebase";
 import { onAuthStateChanged, signInWithEmailAndPassword, type User } from "firebase/auth";
 import {
-  collection, onSnapshot, query, where, doc, updateDoc, getDoc, deleteDoc,
+  collection, onSnapshot, query, where, doc, updateDoc, getDoc, setDoc, deleteDoc,
 } from "firebase/firestore";
 import type { Department, Employee, SolveResult, Absence } from "@/lib/types";
 import { DAYS_KEYS } from "@/lib/types";
@@ -42,6 +42,7 @@ export default function Home() {
   const [weekMonday, setWeekMonday] = useState(() => fmtDate(getMonday(new Date())));
   const [weekOverrides, setWeekOverrides] = useState<Record<string, WeekOverride>>({});
   const [scheduleEdits, setScheduleEdits] = useState<ScheduleEdits>({});
+  const [storeBilling, setStoreBilling] = useState<Record<string, number>>({});
   const generateRef = useRef<(() => void) | null>(null);
 
   // Puerta de acceso (Firebase Auth, sesión persistida).
@@ -96,6 +97,7 @@ export default function Home() {
     setSchedule(null); // blank until loaded
     setWeekOverrides({});
     setScheduleEdits({});
+    setStoreBilling({});
     if (!weekDocId) return;
     // Load saved schedule
     getDoc(doc(db, "schedules", weekDocId)).then((snap) => {
@@ -111,6 +113,10 @@ export default function Home() {
     // Load manual schedule edits (persisted)
     getDoc(doc(db, "scheduleEdits", weekDocId)).then((snap) => {
       if (snap.exists()) setScheduleEdits(snap.data() as ScheduleEdits);
+    });
+    // Facturación diaria store-level POR SEMANA (colección storeBilling, id = weekIsoId).
+    getDoc(doc(db, "storeBilling", weekIsoId(weekMonday))).then((snap) => {
+      if (snap.exists()) setStoreBilling((snap.data().daily as Record<string, number>) ?? {});
     });
   }, [weekDocId, authUser]);
 
@@ -140,6 +146,13 @@ export default function Home() {
     await updateDoc(doc(db, "departments", currentDeptId), { params });
     showToast("Parámetros guardados");
   }, [currentDeptId, showToast]);
+
+  // Guarda la facturación diaria de la semana en curso (store-level, no por departamento).
+  const saveStoreBilling = useCallback(async (daily: Record<string, number>) => {
+    setStoreBilling(daily);
+    if (!authUser) return;
+    await setDoc(doc(db, "storeBilling", weekIsoId(weekMonday)), { daily });
+  }, [weekMonday, authUser]);
 
   const totalHours = activeEmployees.reduce((s, e) => s + e.weekly_hours, 0);
   const dpw = currentDept?.params?.days_per_week ?? 5;
@@ -225,7 +238,7 @@ export default function Home() {
               schedule={schedule} onSchedule={setSchedule}
               scheduleEdits={scheduleEdits} onScheduleEditsChange={setScheduleEdits}
               showToast={showToast} generateRef={generateRef}
-              weekMonday={weekMonday}
+              weekMonday={weekMonday} storeBilling={storeBilling}
             />
           )}
           {view === "team" && currentDept && (
@@ -240,7 +253,8 @@ export default function Home() {
             <ParamsView department={currentDept} onUpdateParams={updateParams} />
           )}
           {view === "billing" && (
-            <BillingView departments={departments} weekMonday={weekMonday} showToast={showToast} />
+            <BillingView departments={departments} weekMonday={weekMonday} showToast={showToast}
+              storeBilling={storeBilling} onSaveStoreBilling={saveStoreBilling} />
           )}
         </div>
       </div>

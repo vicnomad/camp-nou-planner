@@ -22,13 +22,14 @@ interface Props {
   scheduleEdits: ScheduleEdits; onScheduleEditsChange: (e: ScheduleEdits) => void;
   showToast: (msg: string) => void; generateRef: MutableRefObject<(() => void) | null>;
   weekMonday: string;
+  storeBilling: Record<string, number>;
 }
 
 function hh(m: number) { const x=((m%1440)+1440)%1440; return String(Math.floor(x/60)).padStart(2,"0")+":"+String(x%60).padStart(2,"0"); }
 function tm(t: string) { const [h,m]=t.split(":").map(Number); return h*60+m; }
 function initials(name: string) { return name.split(",")[0].slice(0,2).toUpperCase(); }
 
-export default function GridView({ department, employees, allEmployees, weekOverrides, schedule, onSchedule, scheduleEdits, onScheduleEditsChange, showToast, generateRef, weekMonday }: Props) {
+export default function GridView({ department, employees, allEmployees, weekOverrides, schedule, onSchedule, scheduleEdits, onScheduleEditsChange, showToast, generateRef, weekMonday, storeBilling }: Props) {
   const [mode, setMode] = useState<"dia"|"semana">("dia");
   const [dayIdx, setDayIdx] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -66,9 +67,9 @@ export default function GridView({ department, employees, allEmployees, weekOver
     const days = editedDays(scheduleEdits);
     if (days.size === 0) return merged;
     const coverage = { ...merged.coverage };
-    for (const d of days) coverage[d] = recalcCoverage(d, merged, employees, params, mergedStoreHours);
+    for (const d of days) coverage[d] = recalcCoverage(d, merged, employees, params, mergedStoreHours, storeBilling);
     return { ...merged, coverage };
-  }, [schedule, scheduleEdits, employees, params, mergedStoreHours]);
+  }, [schedule, scheduleEdits, employees, params, mergedStoreHours, storeBilling]);
 
   async function saveEvents(ne: Record<string,WeekEvent>) { setEvents(ne); await setDoc(doc(db,"weeks",weekDocId),{events:ne},{merge:true}); }
   function addEvent(day:DayKey,ev:WeekEvent) { saveEvents({...events,[day]:ev}); setEventModal(null); showToast(`Evento añadido al ${DAY_LABELS[day]}`); }
@@ -91,7 +92,7 @@ export default function GridView({ department, employees, allEmployees, weekOver
         // Apply billing_pct to store billing → dept billing
         const pct = (params.billing_pct ?? 100) / 100;
         const deptDaily: Record<string, number> = {};
-        for (const d of DAYS_KEYS) deptDaily[d] = Math.round((params.billing?.daily?.[d] ?? 0) * pct);
+        for (const d of DAYS_KEYS) deptDaily[d] = Math.round((storeBilling[d] ?? 0) * pct);
         solverParams.billing = { ...params.billing, daily: deptDaily };
       } else if (mode2 === "cajas") {
         // Cajas: compute demand_curve from billing × profile / ticket / clients_per_cash
@@ -101,7 +102,7 @@ export default function GridView({ department, employees, allEmployees, weekOver
         for (const d of DAYS_KEYS) {
           const sh2 = mergedStoreHours[d];
           if (!sh2) continue;
-          const dayBill = params.billing?.daily?.[d] ?? 0;
+          const dayBill = storeBilling[d] ?? 0;
           const profName = sh2.special === "match" ? "match" : "normal";
           const prof = params.billing?.profiles?.[profName] ?? {};
           const bands: { from: string; to: string; min: number; max: number }[] = [];
@@ -137,7 +138,7 @@ export default function GridView({ department, employees, allEmployees, weekOver
       showToast(`<b>${result.status}</b> · Objetivo ${result.objective}${result.warnings.length>0?` · ${result.warnings.length} avisos`:""}`);
     } catch(e) { showToast(`Error: ${e instanceof Error?e.message:"desconocido"}`); }
     finally { setLoading(false); }
-  }, [department,employees,params,mergedStoreHours,weekDocId,weekMonday,onSchedule,showToast,scheduleEdits,onScheduleEditsChange]);
+  }, [department,employees,params,mergedStoreHours,weekDocId,weekMonday,onSchedule,showToast,scheduleEdits,onScheduleEditsChange,storeBilling]);
 
   useEffect(() => { generateRef.current=handleGenerate; return()=>{generateRef.current=null;}; }, [handleGenerate,generateRef]);
 
@@ -226,7 +227,7 @@ export default function GridView({ department, employees, allEmployees, weekOver
             <span className="sub">desde apertura − montaje</span>
           </div>
           {displaySchedule ? (
-            <div className="gwrap"><DayGrid day={DAYS_KEYS[dayIdx]} params={params} storeHours={mergedStoreHours} employees={employees} allEmployees={allEmployees} inactiveIds={inactiveIds} weekOverrides={weekOverrides} schedule={displaySchedule} scheduleEdits={scheduleEdits} color={color} onManualEdit={handleManualEdit} onSetOff={handleSetDayOff}/></div>
+            <div className="gwrap"><DayGrid day={DAYS_KEYS[dayIdx]} params={params} storeHours={mergedStoreHours} storeBilling={storeBilling} employees={employees} allEmployees={allEmployees} inactiveIds={inactiveIds} weekOverrides={weekOverrides} schedule={displaySchedule} scheduleEdits={scheduleEdits} color={color} onManualEdit={handleManualEdit} onSetOff={handleSetDayOff}/></div>
           ) : (
             <div className="cardpad" style={{textAlign:"center",color:"var(--ink-3)",padding:40}}>Pulsa <b>Generar</b> para calcular el cuadrante</div>
           )}
@@ -237,7 +238,7 @@ export default function GridView({ department, employees, allEmployees, weekOver
         {displaySchedule ? DAYS_KEYS.map(d=>(
           <div key={d} className="dayblock">
             <h5>{DAY_LABELS[d]} {events[d]?.type==="match"&&<span className="dbtag match">Partido</span>}{events[d]?.type==="inventory"&&<span className="dbtag inv">Inventario</span>}</h5>
-            <div className="gscroll"><DayGrid day={d} params={params} storeHours={mergedStoreHours} employees={employees} allEmployees={allEmployees} inactiveIds={inactiveIds} weekOverrides={weekOverrides} schedule={displaySchedule} scheduleEdits={scheduleEdits} color={color} onManualEdit={handleManualEdit} onSetOff={handleSetDayOff}/></div>
+            <div className="gscroll"><DayGrid day={d} params={params} storeHours={mergedStoreHours} storeBilling={storeBilling} employees={employees} allEmployees={allEmployees} inactiveIds={inactiveIds} weekOverrides={weekOverrides} schedule={displaySchedule} scheduleEdits={scheduleEdits} color={color} onManualEdit={handleManualEdit} onSetOff={handleSetDayOff}/></div>
           </div>
         )) : <div className="card cardpad" style={{textAlign:"center",color:"var(--ink-3)",padding:40}}>Pulsa <b>Generar</b></div>}
       </div>)}
@@ -293,7 +294,7 @@ function EventModal({event,day,onSave,onRemove,onClose,hasEvent}:{event:WeekEven
 
 /* ÚNICO cálculo del aconsejado por franja abierta, consciente de demand_mode y billing_pct.
    Se usa tanto al recalcular cobertura al editar como al pintar la fila ACONSEJADO. */
-function computeTargetMap(day:DayKey,params:Department["params"],sh:StoreHours):Record<string,number> {
+function computeTargetMap(day:DayKey,params:Department["params"],sh:StoreHours,storeDaily:Record<string,number>):Record<string,number> {
   const out:Record<string,number>={};
   const openM=tm(sh.open); const cr=tm(sh.close); const closeM=cr<=openM?cr+1440:cr;
   const mode=params.demand_mode??"billing";
@@ -310,31 +311,31 @@ function computeTargetMap(day:DayKey,params:Department["params"],sh:StoreHours):
       out[hh(m)]=tgt;
     }
   }else if(mode==="cajas"){
-    const store=billing?.daily?.[day]??0; const ticket=params.ticket_medio??25; const cpc=params.clients_per_cash_hour??15;
+    const store=storeDaily?.[day]??0; const ticket=params.ticket_medio??25; const cpc=params.clients_per_cash_hour??15;
     for(let m=openM;m<closeM;m+=30){const hr=Math.floor(m/60)%24;const p=prof[String(hr)]??0;out[hh(m)]=(p>0&&store>0&&ticket>0)?Math.max(1,Math.ceil(store*p/100/ticket/cpc)):0;}
   }else{ // billing
     const prod=billing?.productivity_eur_per_person_hour??420;
-    const deptBill=(billing?.daily?.[day]??0)*(params.billing_pct??100)/100;
+    const deptBill=(storeDaily?.[day]??0)*(params.billing_pct??100)/100;
     for(let m=openM;m<closeM;m+=30){const hr=Math.floor(m/60)%24;const p=prof[String(hr)]??0;out[hh(m)]=(p>0&&deptBill>0)?Math.max(1,Math.round(deptBill*p/100/prod)):1;}
   }
   return out;
 }
 
 /* Coverage recalc — assigned igual que antes; target via computeTargetMap (único cálculo). */
-function recalcCoverage(day:DayKey,sched:SolveResult,employees:Employee[],params:Department["params"],storeHours:Record<string,StoreHours>):CoverageSlot[] {
+function recalcCoverage(day:DayKey,sched:SolveResult,employees:Employee[],params:Department["params"],storeHours:Record<string,StoreHours>,storeDaily:Record<string,number>):CoverageSlot[] {
   const sh=storeHours[day]; if(!sh) return [];
   const openM=tm(sh.open); const cr=tm(sh.close); const closeM=cr<=openM?cr+1440:cr;
   const preM=openM-(params.preopen?.minutes??30); const postM=closeM+(params.postclose?.minutes??30);
   let endM=postM; if(sh.extra){const et=tm(sh.extra.to);endM=Math.max(endM,et<=openM?et+1440:et);}
   const t0=preM; const n=Math.ceil((endM-t0)/30); const cov=new Array(n).fill(0);
   for(const emp of employees){const e=sched.schedule?.[emp.id]?.[day];if(!e||e.code!=="normal"||!e.start)continue;const s=tm(e.start);const sl=(e.hours??0)*2;for(let i=0;i<sl;i++){const idx=Math.round((s+i*30-t0)/30);if(idx>=0&&idx<n)cov[idx]++;}}
-  const tmap=computeTargetMap(day,params,sh);
+  const tmap=computeTargetMap(day,params,sh,storeDaily);
   return cov.map((a,k)=>{const m=t0+k*30;const open=m>=openM&&m<closeM;return{time:hh(m),target:open?(tmap[hh(m)]??0):0,assigned:a};});
 }
 
 /* DayGrid — with COMPL column, overrides indicators */
-function DayGrid({day,params,storeHours,employees,allEmployees,inactiveIds,weekOverrides,schedule,scheduleEdits,color,onManualEdit,onSetOff}:{
-  day:DayKey;params:Department["params"];storeHours:Record<string,StoreHours>;
+function DayGrid({day,params,storeHours,storeBilling,employees,allEmployees,inactiveIds,weekOverrides,schedule,scheduleEdits,color,onManualEdit,onSetOff}:{
+  day:DayKey;params:Department["params"];storeHours:Record<string,StoreHours>;storeBilling:Record<string,number>;
   employees:Employee[];allEmployees:Employee[];inactiveIds:Set<string>;weekOverrides:Record<string,WeekOverride>;
   schedule:SolveResult;scheduleEdits:ScheduleEdits;color:string;
   onManualEdit:(empId:string,day:DayKey,start:string,hours:number)=>void;
@@ -350,7 +351,7 @@ function DayGrid({day,params,storeHours,employees,allEmployees,inactiveIds,weekO
   const covMap:Record<string,CoverageSlot>={};(schedule.coverage?.[day]??[]).forEach(c=>{covMap[c.time]=c;});
 
   // ACONSEJADO: ÚNICO cálculo (mismo que recalcCoverage), consciente del modo y del % del dpto.
-  const targetMap=computeTargetMap(day,params,sh);
+  const targetMap=computeTargetMap(day,params,sh,storeBilling);
   const dragRef=useRef<{empId:string;mode:"move"|"start"|"end";origStart:number;origSlots:number;startX:number}|null>(null);
   const [dragPreview,setDragPreview]=useState<{empId:string;startSlot:number;slots:number}|null>(null);
   function onPD(e:React.PointerEvent,empId:string,ss:number,sl:number,ck:number){e.preventDefault();dragRef.current={empId,origStart:ss,origSlots:sl,mode:ck===ss?"start":ck===ss+sl-1?"end":"move",startX:e.clientX};setDragPreview({empId,startSlot:ss,slots:sl});(e.target as HTMLElement).setPointerCapture(e.pointerId);}

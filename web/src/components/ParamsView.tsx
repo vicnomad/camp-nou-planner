@@ -55,16 +55,6 @@ export default function ParamsView({ department, onUpdateParams }: Props) {
     }));
   }
 
-  function setBillingDaily(day: string, val: number) {
-    update((p) => ({
-      ...p,
-      billing: {
-        ...p.billing,
-        daily: { ...p.billing.daily, [day]: val },
-      },
-    }));
-  }
-
   function setProfilePct(hour: string, val: number) {
     update((p) => ({
       ...p,
@@ -100,57 +90,6 @@ export default function ParamsView({ department, onUpdateParams }: Props) {
     () => Math.max(...Object.values(currentProfile), 1),
     [currentProfile]
   );
-
-  const peakHeads = useMemo(() => {
-    const prod = params.billing?.productivity_eur_per_person_hour ?? 420;
-    const dailyMax = Math.max(...Object.values(params.billing?.daily ?? {}), 1);
-    let peak = 0;
-    for (const h of profileHours) {
-      const pct = currentProfile[String(h)] ?? 0;
-      const eurHr = dailyMax * (pct / 100);
-      const heads = Math.max(1, Math.round(eurHr / prod / 2));
-      peak = Math.max(peak, heads);
-    }
-    return peak;
-  }, [params.billing, currentProfile, profileHours]);
-
-  // Excel import
-  const fileRef = useRef<HTMLInputElement>(null);
-  async function handleExcelImport(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      const XLSX = await import("xlsx");
-      const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf);
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const data = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws);
-      // Expect rows with a numeric column for billing
-      const vals = data
-        .map((row) => {
-          const v = Object.values(row).find(
-            (val) => typeof val === "number" && val > 0
-          );
-          return typeof v === "number" ? v : null;
-        })
-        .filter((v): v is number => v !== null);
-
-      if (vals.length >= 7) {
-        // Take the first 7 values as MON-SUN
-        const newDaily = { ...params.billing.daily };
-        DAYS_KEYS.forEach((d, i) => {
-          if (i < vals.length) newDaily[d] = vals[i];
-        });
-        update((p) => ({
-          ...p,
-          billing: { ...p.billing, daily: newDaily },
-        }));
-      }
-    } catch {
-      alert("Error al leer el archivo Excel");
-    }
-    if (fileRef.current) fileRef.current.value = "";
-  }
 
   return (
     <div className="pgrid">

@@ -11,9 +11,11 @@ interface Props {
   departments: Department[];
   weekMonday: string;
   showToast: (msg: string) => void;
+  storeBilling: Record<string, number>;
+  onSaveStoreBilling: (daily: Record<string, number>) => void;
 }
 
-export default function BillingView({ departments, weekMonday, showToast }: Props) {
+export default function BillingView({ departments, weekMonday, showToast, storeBilling, onSaveStoreBilling }: Props) {
   const [schedules, setSchedules] = useState<Record<string, SolveResult | null>>({});
   const [deptEmployees, setDeptEmployees] = useState<Record<string, Set<string>>>({});
   const wiso = weekIsoId(weekMonday);
@@ -34,16 +36,9 @@ export default function BillingView({ departments, weekMonday, showToast }: Prop
     })();
   }, [departments, wiso]);
 
-  const refDept = departments[0];
-  const storeBilling = refDept?.params?.billing?.daily ?? {};
-
-  async function setStoreBillingDay(day: string, val: number) {
-    for (const dept of departments) {
-      await updateDoc(doc(db, "departments", dept.id), {
-        "params.billing.daily": { ...dept.params.billing.daily, [day]: val },
-      });
-    }
-    showToast("Facturación guardada");
+  // Facturación diaria store-level POR SEMANA: llega como prop desde page.tsx (colección storeBilling).
+  function setStoreBillingDay(day: string, val: number) {
+    onSaveStoreBilling({ ...storeBilling, [day]: val });
   }
 
   const fileRef = useRef<HTMLInputElement>(null);
@@ -58,11 +53,9 @@ export default function BillingView({ departments, weekMonday, showToast }: Prop
       const data = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws);
       const vals = data.map(row => { const v = Object.values(row).find(val => typeof val === "number" && val > 0); return typeof v === "number" ? v : null; }).filter((v): v is number => v !== null);
       if (vals.length >= 7) {
-        for (const dept of departments) {
-          const nd = { ...dept.params.billing.daily };
-          DAYS_KEYS.forEach((d, i) => { if (i < vals.length) nd[d] = vals[i]; });
-          await updateDoc(doc(db, "departments", dept.id), { "params.billing.daily": nd });
-        }
+        const nd = { ...storeBilling };
+        DAYS_KEYS.forEach((d, i) => { if (i < vals.length) nd[d] = vals[i]; });
+        onSaveStoreBilling(nd);
         showToast("Facturación importada");
       }
     } catch { alert("Error al leer el archivo"); }
