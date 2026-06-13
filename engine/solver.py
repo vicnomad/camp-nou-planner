@@ -21,7 +21,7 @@ DAY_ES = {"MON": "Lunes", "TUE": "Martes", "WED": "Miércoles",
           "THU": "Jueves", "FRI": "Viernes", "SAT": "Sábado", "SUN": "Domingo"}
 
 # Contract hours = TOP PRIORITY. Demand only shapes placement, never cuts hours.
-W_CONTRACT = 100  # missing a contract day (very high)
+W_CONTRACT = 100000  # missing a contract day — domina cualquier sobre-cobertura (cuadrática) en todo modo/plantilla
 WU_DEM     = 3    # under demand target (shapes where to place people)
 WO_DEM_SQ  = 1    # over demand (quadratic, just distributes excess evenly)
 WU_BAND    = 5    # under montaje/cierre min
@@ -30,6 +30,10 @@ W_STAB     = 2    # shift-time stability
 
 # Bases parciales con días/horas realistas (no repartidas entre dpw días).
 PARTTIME_BASES = {8: (2, 4), 12: (2, 6), 16: (4, 4)}  # weekly_hours: (días, horas_por_día)
+
+# Ausencias REALES que restan días de contrato (vacaciones, festivo recuperado, convenio, baja).
+# El DLB (día libre) NO resta: bloquea su día pero el contrato se reparte en los demás.
+ABSENCE_REDUCES = {"VCN", "VAA", "FRC", "DEC", "BJA", "vacation"}
 
 
 def _tm(t):
@@ -179,8 +183,10 @@ def solve(data):
             if dd not in abs_days:
                 abs_days[dd] = "vacation"
 
-        # target = contract days minus absences, capped by feasible days
-        contract_td = max(0, base_days - len(abs_days))
+        # target = contract days minus REAL absences (no el DLB), capped by feasible days.
+        # abs_days sigue conteniendo TODOS los días no trabajados (bloquean su día más abajo).
+        reducing = sum(1 for t in abs_days.values() if t in ABSENCE_REDUCES)
+        contract_td = max(0, base_days - reducing)
 
         feasible_days = 0
         infeasible_reasons = []

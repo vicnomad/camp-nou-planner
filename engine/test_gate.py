@@ -484,6 +484,58 @@ for eid, exp_days, exp_hpd, exp_total in [("P8",2,4,8),("P12",2,6,12),("P16",4,4
     print(f"     {eid}: " + ", ".join(f"{d} {v['start']}-{v['end']} ({v['hours']}h)"
                                        for d,v in work.items()))
 
+# ── (q) Contrato gana a la demanda + DLB no resta contrato ──────────
+# q1: COBERTURA con plantilla > demanda. Banda min 1 (poca demanda), 6 personas de 25h:
+#     todas deben cumplir contrato (5 días × 5h) aunque sobre gente. (Antes fallaba: la
+#     sobre-cobertura cuadrática superaba al contrato y dejaba días sin cubrir.)
+print("\n(q1) Cobertura plantilla>demanda: todos cumplen contrato")
+pcov = json.loads(json.dumps(BASE))
+pcov["demand_mode"] = "cobertura"
+pcov["billing"]["daily"] = {d: 0 for d in DAYS}
+band = [{"from":"08:00","to":"21:00","min":1,"max":2}]
+pcov["demand_curve"] = {d: band for d in DAYS}
+rq = solve({
+    "department": {"id":"cov","name":"Cob"},
+    "params": pcov,
+    "employees": [{"id":f"Q{i}","name":f"Cob, {i}","weekly_hours":25,"availability":"F"} for i in range(1,7)],
+})
+check("status OK", rq["status"] in ("OPTIMAL","FEASIBLE"), rq["status"])
+for i in range(1,7):
+    eid = f"Q{i}"
+    work = {d:v for d,v in rq["schedule"].get(eid,{}).items() if v.get("code")=="normal"}
+    total = round(sum(v.get("hours",0) for v in work.values()),2)
+    check(f"  {eid} works 5 days", len(work)==5, f"got {len(work)}")
+    check(f"  {eid} total 25h",  total==25, f"got {total}")
+print("     Q1: " + ", ".join(f"{d} {v['hours']}h" for d,v in
+      {d:v for d,v in rq["schedule"].get("Q1",{}).items() if v.get("code")=="normal"}.items()))
+
+# q2: DLB NO resta contrato → 25h/5d con 1 DLB trabaja 5 días (evita el DLB), 25h.
+print("\n(q2) DLB no resta contrato (trabaja 5 días, 25h)")
+rdlb = solve({
+    "department": {"id":"t","name":"T"},
+    "params": BASE,
+    "employees": [{"id":"DLB1","name":"Libre, Uno","weekly_hours":25,"availability":"F",
+                   "absences":[{"type":"DLB","days":["MON"]}]}],
+})
+check("status OK", rdlb["status"] in ("OPTIMAL","FEASIBLE"), rdlb["status"])
+wdlb = {d:v for d,v in rdlb["schedule"].get("DLB1",{}).items() if v.get("code")=="normal"}
+check("  DLB1 works 5 days", len(wdlb)==5, f"got {len(wdlb)}")
+check("  DLB1 total 25h", round(sum(v.get('hours',0) for v in wdlb.values()),2)==25, f"got {sum(v.get('hours',0) for v in wdlb.values())}")
+check("  DLB1 MON libre", rdlb["schedule"].get("DLB1",{}).get("MON",{}).get("code") in ("off",None,"DLB"), f"got {rdlb['schedule'].get('DLB1',{}).get('MON',{})}")
+print("     DLB1: " + ", ".join(f"{d} {v['hours']}h" for d,v in wdlb.items()))
+
+# q3: VCN SÍ resta contrato → 25h/5d con 1 VCN trabaja 4 días, 20h.
+print("\n(q3) VCN sí resta contrato (trabaja 4 días)")
+rvcn = solve({
+    "department": {"id":"t","name":"T"},
+    "params": BASE,
+    "employees": [{"id":"VCN1","name":"Vaca, Uno","weekly_hours":25,"availability":"F",
+                   "absences":[{"type":"VCN","days":["MON"]}]}],
+})
+check("status OK", rvcn["status"] in ("OPTIMAL","FEASIBLE"), rvcn["status"])
+wvcn = {d:v for d,v in rvcn["schedule"].get("VCN1",{}).items() if v.get("code")=="normal"}
+check("  VCN1 works 4 days", len(wvcn)==4, f"got {len(wvcn)}")
+
 # ── summary ────────────────────────────────────────────────────────
 print(f"\n{'='*50}")
 print(f"  {PASS} passed, {FAIL} failed")
