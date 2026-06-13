@@ -18,7 +18,7 @@ interface Props {
   onOverridesChange: (o: Record<string, WeekOverride>) => void;
 }
 
-const HOURS_OPTIONS = [8, 12, 16, 20, 25, 35, 40];
+const HOURS_OPTIONS = [8, 12, 16, 20, 25, 30, 35, 40];
 const AVAIL_OPTIONS: { value: Employee["availability"]; label: string }[] = [
   { value: "M", label: "Mañana" },
   { value: "T", label: "Tarde" },
