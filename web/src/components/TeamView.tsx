@@ -286,17 +286,21 @@ function EmployeeModal({
   const [absenceType, setAbsenceType] = useState("VCN");
   const hasFixed = !!employee.fixed;
 
-  // Límites de tienda del departamento del empleado (menor apertura, mayor cierre); fallback 07:00–22:00.
+  // Límites de la franja: desde el montaje (apertura − preopen, redondeado a la hora) hasta el cierre de tienda.
+  // P.ej. tienda 08:00–21:00 con montaje 30' → franja 07:00–21:00. Fallback 07:00–22:00.
   const storeWindow = useMemo(() => {
-    const sh = (departments.find((d) => d.id === employee.department)?.params ?? deptParams)?.store_hours ?? {};
+    const p = departments.find((d) => d.id === employee.department)?.params ?? deptParams;
+    const sh = p?.store_hours ?? {};
     const opens: number[] = []; const closes: number[] = [];
     for (const v of Object.values(sh)) {
       if (v?.open) opens.push(tmin(v.open));
       if (v?.close) closes.push(tmin(v.close));
     }
+    if (!opens.length || !closes.length) return { openMin: 7 * 60, closeMin: 22 * 60 };
+    const preMin = p?.preopen?.minutes ?? 30;
     return {
-      openMin: opens.length ? Math.min(...opens) : 7 * 60,
-      closeMin: closes.length ? Math.max(...closes) : 22 * 60,
+      openMin: Math.floor((Math.min(...opens) - preMin) / 60) * 60,
+      closeMin: Math.max(...closes),
     };
   }, [departments, employee.department, deptParams]);
   // Las ausencias son POR SEMANA: viven en el override (estado ov), no en el doc global del empleado.
