@@ -196,11 +196,15 @@ def solve(data):
             if d in abs_days or fixed.get(d) == "off":
                 continue
             dc = DC[d]
-            av_d = _av_for_day(av, d)
-            if av_d == "X":
-                infeasible_reasons.append(f"{DAY_ES.get(d,d)}: no disponible (X)")
-                continue
-            lo, hi = _av_window(av_d, dc)
+            if isinstance(av, dict) and "from" in av and "to" in av:
+                av_d = "Pers"
+                lo, hi = _tm(av["from"]), _tm(av["to"])
+            else:
+                av_d = _av_for_day(av, d)
+                if av_d == "X":
+                    infeasible_reasons.append(f"{DAY_ES.get(d,d)}: no disponible (X)")
+                    continue
+                lo, hi = _av_window(av_d, dc)
             sl = max(0, s4(d, lo)); sh2 = s4(d, hi)
             ea = max(sl, 0); la = min(sh2, dc["N"]) - L
             if d in fixed and fixed[d] != "off":
@@ -241,10 +245,14 @@ def solve(data):
             if DC[d] is None or d in ei["abs"] or ei["fix"].get(d) == "off":
                 W[i][d] = None; X[i][d] = {}; continue
             dc = DC[d]
-            av_d = _av_for_day(ei["av"], d)
-            if av_d == "X":
-                W[i][d] = None; X[i][d] = {}; continue
-            lo, hi = _av_window(av_d, dc)
+            av = ei["av"]
+            if isinstance(av, dict) and "from" in av and "to" in av:
+                lo, hi = _tm(av["from"]), _tm(av["to"])
+            else:
+                av_d = _av_for_day(av, d)
+                if av_d == "X":
+                    W[i][d] = None; X[i][d] = {}; continue
+                lo, hi = _av_window(av_d, dc)
             sl = max(0, s4(d, lo)); sh2 = s4(d, hi)
             ea = max(sl, 0); la = min(sh2, dc["N"]) - ei["L"]
             if d in ei["fix"] and ei["fix"][d] != "off":

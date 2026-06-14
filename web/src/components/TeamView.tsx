@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { db } from "@/lib/firebase";
 import { doc, setDoc, deleteDoc } from "firebase/firestore";
 import type { Department, Employee, Absence } from "@/lib/types";
@@ -28,6 +28,10 @@ const AVAIL_OPTIONS: { value: Employee["availability"]; label: string }[] = [
 function initials(name: string) {
   return name.split(",")[0].slice(0, 2).toUpperCase();
 }
+
+// HH:MM ↔ minutos (para la franja de disponibilidad personalizada).
+function tmin(t: string): number { const [h, m] = t.split(":").map(Number); return h * 60 + m; }
+function mhm(m: number): string { return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`; }
 
 function vacDaysCount(absences: Absence[]): number {
   return absences
@@ -203,11 +207,14 @@ export default function TeamView({
                       <small>{hpd}h/día</small>
                     </td>
                     <td>
-                      <span className={`pill p-${typeof emp.availability === "string" ? emp.availability : "F"}`}>
-                        {typeof emp.availability === "string"
-                          ? (AVAIL_OPTIONS.find((a) => a.value === emp.availability)?.label ?? emp.availability)
-                          : "Por día"}
-                      </span>
+                      {(() => {
+                        const av = emp.availability;
+                        const isWin = typeof av === "object" && av !== null && "from" in av;
+                        const label = typeof av === "string"
+                          ? (AVAIL_OPTIONS.find((a) => a.value === av)?.label ?? av)
+                          : isWin ? "Pers." : "Por día";
+                        return <span className={`pill p-${typeof av === "string" ? av : "F"}`}>{label}</span>;
+                      })()}
                     </td>
                     <td>
                       <div className={`tg ${emp.fixed ? "on" : ""}`} />
@@ -278,6 +285,20 @@ function EmployeeModal({
   const [ov, setOv] = useState<WeekOverride>(weekOverride ?? {});
   const [absenceType, setAbsenceType] = useState("VCN");
   const hasFixed = !!employee.fixed;
+
+  // Límites de tienda del departamento del empleado (menor apertura, mayor cierre); fallback 07:00–22:00.
+  const storeWindow = useMemo(() => {
+    const sh = (departments.find((d) => d.id === employee.department)?.params ?? deptParams)?.store_hours ?? {};
+    const opens: number[] = []; const closes: number[] = [];
+    for (const v of Object.values(sh)) {
+      if (v?.open) opens.push(tmin(v.open));
+      if (v?.close) closes.push(tmin(v.close));
+    }
+    return {
+      openMin: opens.length ? Math.min(...opens) : 7 * 60,
+      closeMin: closes.length ? Math.max(...closes) : 22 * 60,
+    };
+  }, [departments, employee.department, deptParams]);
   // Las ausencias son POR SEMANA: viven en el override (estado ov), no en el doc global del empleado.
   const absences = ov.absences ?? [];
 
@@ -414,7 +435,8 @@ function EmployeeModal({
             </div>
           </div>
           <AvailabilityEditor availability={employee.availability ?? "F"}
-            onChange={(av) => onChange({ ...employee, availability: av })} />
+            onChange={(av) => onChange({ ...employee, availability: av })}
+            openMin={storeWindow.openMin} closeMin={storeWindow.closeMin} />
           <div className="form-field">
             <label style={{ display: "flex", alignItems: "center", gap: 10 }}>
               Horario fijo
@@ -558,19 +580,27 @@ const AV_OPTS = [
 const DAY_KEYS_LO = ["mon","tue","wed","thu","fri","sat","sun"] as const;
 const DAY_LABELS_SHORT = ["L","M","X","J","V","S","D"];
 
-function AvailabilityEditor({ availability, onChange }: {
+function AvailabilityEditor({ availability, onChange, openMin, closeMin }: {
   availability: Employee["availability"];
   onChange: (av: Employee["availability"]) => void;
+  openMin: number; closeMin: number;
 }) {
-  const isPerDay = typeof availability === "object";
-  const simpleVal = isPerDay ? "F" : (availability as string);
+  const isWindow = typeof availability === "object" && availability !== null && "from" in availability;
+  const isPerDay = typeof availability === "object" && availability !== null && !isWindow;
+  const simpleVal = isWindow ? "W" : isPerDay ? "F" : (availability as string);
   const [expanded, setExpanded] = useState(isPerDay);
 
   const perDay: Record<string, string> = isPerDay
     ? (availability as Record<string, string>)
-    : Object.fromEntries(DAY_KEYS_LO.map(d => [d, simpleVal]));
+    : Object.fromEntries(DAY_KEYS_LO.map(d => [d, isWindow ? "F" : simpleVal]));
 
   function setSimple(v: string) {
+    if (v === "W") {
+      // Ventana por defecto = todo el horario de tienda; el usuario la ajusta con la franja.
+      onChange({ from: mhm(openMin), to: mhm(closeMin) });
+      setExpanded(false);
+      return;
+    }
     onChange(v as Employee["availability"]);
     setExpanded(false);
   }
@@ -586,27 +616,101 @@ function AvailabilityEditor({ availability, onChange }: {
     }
   }
 
+  // ── Franja personalizada (solo en modo ventana) ──
+  const win = isWindow ? (availability as { from: string; to: string }) : null;
+  const span = Math.max(30, closeMin - openMin);
+  const fromMin = win ? Math.min(Math.max(tmin(win.from), openMin), closeMin) : openMin;
+  const toMin = win ? Math.min(Math.max(tmin(win.to), openMin), closeMin) : closeMin;
+  const pct = (m: number) => ((m - openMin) / span) * 100;
+  const trackRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<"from" | "to" | null>(null);
+
+  function snapFromX(clientX: number): number {
+    const r = trackRef.current?.getBoundingClientRect();
+    if (!r) return openMin;
+    const ratio = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
+    return Math.round((openMin + ratio * span) / 30) * 30;
+  }
+  function onHandleDown(which: "from" | "to", e: React.PointerEvent) {
+    e.preventDefault(); dragRef.current = which;
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  }
+  function onTrackMove(e: React.PointerEvent) {
+    if (!dragRef.current || !win) return;
+    const m = snapFromX(e.clientX);
+    if (dragRef.current === "from") {
+      const nf = Math.max(openMin, Math.min(m, toMin - 30));
+      onChange({ from: mhm(nf), to: win.to });
+    } else {
+      const nt = Math.min(closeMin, Math.max(m, fromMin + 30));
+      onChange({ from: win.from, to: mhm(nt) });
+    }
+  }
+  function onTrackUp() { dragRef.current = null; }
+
+  const hourMarks: number[] = [];
+  for (let m = Math.ceil(openMin / 60) * 60; m <= closeMin; m += 60) hourMarks.push(m);
+
   return (
     <div className="form-field">
       <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
         Disponibilidad
         {isPerDay && <span style={{ width: 6, height: 6, borderRadius: 3, background: "#d4940a" }} title="Modo por día" />}
+        {isWindow && <span style={{ width: 6, height: 6, borderRadius: 3, background: "var(--garnet)" }} title="Ventana personalizada" />}
       </label>
       {!expanded && (
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <select className="sel" style={{ width: "100%" }} value={simpleVal}
             onChange={e => setSimple(e.target.value)}>
-            {AV_OPTS.filter(a => a.v !== "X").map(a => (
-              <option key={a.v} value={a.v}>{a.l}</option>
-            ))}
+            <option value="M">Mañana</option>
+            <option value="T">Tarde</option>
+            <option value="F">Completa</option>
+            <option value="W">Personalizada</option>
           </select>
         </div>
       )}
-      <button onClick={() => setExpanded(!expanded)} style={{
-        border: "none", background: "none", cursor: "pointer", fontSize: 11,
-        color: "var(--blau-bright)", fontWeight: 500, padding: "4px 0", marginTop: 2,
-      }}>{expanded ? "▾ Simplificar" : "▸ Disponibilidad por día"}</button>
-      {expanded && (
+
+      {/* FRANJA — solo en modo Personalizada */}
+      {isWindow && win && (
+        <div style={{ marginTop: 14, marginBottom: 4, userSelect: "none" }}>
+          <div ref={trackRef} onPointerMove={onTrackMove} onPointerUp={onTrackUp}
+            style={{ position: "relative", height: 8, background: "var(--line)", borderRadius: 5, margin: "26px 12px 0" }}>
+            {/* ventana resaltada */}
+            <div style={{ position: "absolute", top: 0, bottom: 0, left: `${pct(fromMin)}%`, width: `${pct(toMin) - pct(fromMin)}%`, background: "var(--garnet)", borderRadius: 5 }} />
+            {/* tiradores */}
+            {([["from", fromMin, win.from], ["to", toMin, win.to]] as const).map(([which, m, lbl]) => (
+              <div key={which} onPointerDown={e => onHandleDown(which, e)}
+                style={{ position: "absolute", top: "50%", left: `${pct(m)}%`, transform: "translate(-50%,-50%)",
+                  width: 20, height: 20, borderRadius: "50%", background: "#fff", border: "2px solid var(--garnet)",
+                  boxShadow: "0 1px 4px rgba(0,0,0,.2)", cursor: "grab", touchAction: "none", zIndex: 2 }}>
+                <span style={{ position: "absolute", bottom: 24, left: "50%", transform: "translateX(-50%)",
+                  fontSize: 11, fontWeight: 700, color: "var(--garnet)", fontFamily: "'Spline Sans Mono'", whiteSpace: "nowrap" }}>{lbl}</span>
+              </div>
+            ))}
+          </div>
+          {/* marcas de hora */}
+          <div style={{ position: "relative", height: 16, margin: "4px 12px 0" }}>
+            {hourMarks.map(m => (
+              <div key={m} style={{ position: "absolute", left: `${pct(m)}%`, transform: "translateX(-50%)", textAlign: "center" }}>
+                <div style={{ width: 1, height: 4, background: "var(--line)", margin: "0 auto" }} />
+                <span style={{ fontSize: 9, color: "var(--ink-3)" }}>{m / 60}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--ink-2)", fontWeight: 600, marginTop: 4 }}>
+            Puede trabajar de {win.from} a {win.to}
+          </div>
+        </div>
+      )}
+
+      {/* Enlace "por día": oculto en modo Personalizada (ventana y por-día son excluyentes) */}
+      {!isWindow && (
+        <button onClick={() => setExpanded(!expanded)} style={{
+          border: "none", background: "none", cursor: "pointer", fontSize: 11,
+          color: "var(--blau-bright)", fontWeight: 500, padding: "4px 0", marginTop: 2,
+        }}>{expanded ? "▾ Simplificar" : "▸ Disponibilidad por día"}</button>
+      )}
+      {expanded && !isWindow && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginTop: 4 }}>
           {DAY_KEYS_LO.map((dk, i) => {
             const val = perDay[dk] ?? "F";

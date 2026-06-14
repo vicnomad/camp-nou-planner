@@ -75,7 +75,7 @@ export interface Employee {
   dni: string;
   department: string;
   weekly_hours: number;
-  availability: "M" | "T" | "F" | Record<string, string>;
+  availability: "M" | "T" | "F" | { from: string; to: string } | Record<string, string>;
   fixed: Record<string, string> | null;
   absences: Absence[];
 }
