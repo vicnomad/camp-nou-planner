@@ -263,6 +263,82 @@ export default function GridView({ department, employees, allEmployees, weekOver
         ) : null;
       })()}
 
+      {/* Cuadrícula-resumen semanal: matriz persona × L-D (solo con cuadrante generado) */}
+      {!selectedEmp && displaySchedule && (() => {
+        const dpwR = params.days_per_week ?? 5;
+        const mono = "'Spline Sans Mono'";
+        const rows = employees.map(emp => ({
+          emp,
+          split: weekComplSplit(displaySchedule.schedule?.[emp.id], emp.weekly_hours, emp.weekly_hours / dpwR),
+        }));
+        const dayTotals = DAYS_KEYS.map(d => rows.reduce((s, r) =>
+          displaySchedule.schedule?.[r.emp.id]?.[d]?.code === "normal" ? s + r.split.days[d].hours : s, 0));
+        const dayPeople = DAYS_KEYS.map(d => rows.reduce((n, r) =>
+          displaySchedule.schedule?.[r.emp.id]?.[d]?.code === "normal" ? n + 1 : n, 0));
+        const grandTotal = rows.reduce((s, r) => s + r.split.total, 0);
+
+        const th: React.CSSProperties = { padding: "6px 8px", fontSize: 11, fontWeight: 700, color: "var(--ink-3)", textAlign: "center" };
+        const dcell: React.CSSProperties = { padding: "5px 6px", textAlign: "center" };
+        const pill: React.CSSProperties = { padding: "2px 8px", borderRadius: 10, fontSize: 11, fontWeight: 700 };
+
+        return (
+          <div className="card" style={{ marginTop: 14 }}>
+            <div className="chead"><h3>Resumen semanal</h3></div>
+            <div style={{ overflowX: "auto", maxHeight: 420, overflowY: "auto" }}>
+              <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
+                <thead>
+                  <tr>
+                    <th style={{ ...th, textAlign: "left", paddingLeft: 14 }}>Nombre</th>
+                    <th style={th}>Base</th>
+                    <th style={th}>Check</th>
+                    {DAYS_KEYS.map(d => <th key={d} style={{ ...th, background: "#e7f5ef", color: "#0f6e56" }}>{DAY_SHORT[d]}</th>)}
+                    <th style={th}>Tot</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map(({ emp, split }) => (
+                    <tr key={emp.id} style={{ borderTop: "1px solid var(--line-2)" }}>
+                      <td style={{ padding: "5px 8px 5px 14px", fontWeight: 600, whiteSpace: "nowrap" }}>{emp.name}</td>
+                      <td style={{ ...dcell, fontFamily: mono }}>{emp.weekly_hours}</td>
+                      <td style={dcell}>
+                        {split.missing === 0
+                          ? <span style={{ ...pill, background: "#d8f1e7", color: "#0f6e56" }}>ok</span>
+                          : <span style={{ ...pill, background: "#fbe1e8", color: "var(--garnet)" }}>✕</span>}
+                      </td>
+                      {DAYS_KEYS.map(d => {
+                        const code = displaySchedule.schedule?.[emp.id]?.[d]?.code;
+                        let content: string;
+                        let st: React.CSSProperties = { ...dcell, fontFamily: mono };
+                        if (code === "normal") { content = String(split.days[d].hours); st = { ...st, background: "#e7f5ef", color: "#0f6e56" }; }
+                        else if (code && code !== "off") { content = code.toUpperCase().slice(0, 3); st = { ...st, background: "#f0f0f0", color: "var(--ink-2)" }; }
+                        else { content = "–"; st = { ...st, color: "var(--ink-3)" }; }
+                        return <td key={d} style={st}>{content}</td>;
+                      })}
+                      <td style={{ ...dcell, fontFamily: mono, fontWeight: 700, ...(split.compl > 0 ? { color: "#b87800" } : {}) }}
+                        title={split.compl > 0 ? `incluye ${split.compl}h complementarias` : undefined}>{split.total}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr style={{ borderTop: "2px solid var(--line)" }}>
+                    <td style={{ padding: "6px 8px 6px 14px", fontWeight: 700 }}>Total</td>
+                    <td style={dcell} /><td style={dcell} />
+                    {dayTotals.map((t, i) => <td key={i} style={{ ...dcell, fontFamily: mono, fontWeight: 700 }}>{t}</td>)}
+                    <td style={{ ...dcell, fontFamily: mono, fontWeight: 700 }}>{grandTotal}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: "4px 8px 8px 14px", fontWeight: 600, color: "var(--ink-3)", fontSize: 11 }}>Personas</td>
+                    <td style={dcell} /><td style={dcell} />
+                    {dayPeople.map((p, i) => <td key={i} style={{ ...dcell, fontFamily: mono, color: "var(--ink-2)" }}>{p}</td>)}
+                    <td style={dcell} />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        );
+      })()}
+
       {displaySchedule && displaySchedule.warnings.length>0 && (
         <div style={{marginTop:14,background:"#fdf0d6",border:"1px solid var(--gold-deep)",borderRadius:12,padding:"12px 16px"}}>
           <b style={{color:"var(--gold-deep)"}}>Avisos ({displaySchedule.warnings.length})</b>
