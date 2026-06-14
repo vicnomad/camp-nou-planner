@@ -4,7 +4,7 @@
  * con línea divisoria por hora y parte complementaria del turno en otro color (ámbar).
  */
 import type { Department, Employee, SolveResult, StoreHours, DayKey } from "./types";
-import { DAYS_KEYS } from "./types";
+import { DAYS_KEYS, DAY_SHORT } from "./types";
 import { weekComplSplit } from "./weekCompl";
 import { editedDaysOf, type ScheduleEdits } from "./schedule";
 
@@ -110,8 +110,7 @@ export function printA3(
     const presCells = buckets.map(b => {
       const w = (b.to - b.from) / span * 100;
       const hot = maxCnt > 0 && b.n === maxCnt && b.n > 0;
-      const bg = b.n > 0 ? `background:rgba(15,110,86,${(0.07 + 0.13 * b.n).toFixed(3)})` : "";
-      return `<i class="pcell${hot ? " hot" : ""}" style="left:${pct(b.from).toFixed(2)}%;width:${w.toFixed(2)}%;${bg}">${b.n || ""}</i>`;
+      return `<i class="pcell${hot ? " hot" : ""}" style="left:${pct(b.from).toFixed(2)}%;width:${w.toFixed(2)}%">${b.n || ""}</i>`;
     }).join("");
 
     return `<div class="cell">
@@ -122,29 +121,43 @@ export function printA3(
     </div>`;
   }
 
-  // ── Celda Resumen (8ª) ──
-  function summaryCell(): string {
+  // ── Resumen semanal a lo ancho (mismo formato que el "Resumen semanal" de la app) ──
+  function summarySection(): string {
+    const rs = employees.map(emp => ({ emp, sp: splitByEmp.get(emp.id)! }));
+    const dayTotals = DAYS_KEYS.map(d => rs.reduce((s, r) =>
+      sched.schedule?.[r.emp.id]?.[d]?.code === "normal" ? s + r.sp.days[d].hours : s, 0));
+    const dayPeople = DAYS_KEYS.map(d => rs.reduce((n, r) =>
+      sched.schedule?.[r.emp.id]?.[d]?.code === "normal" ? n + 1 : n, 0));
+    const grand = rs.reduce((s, r) => s + r.sp.total, 0);
+
+    const head = `<tr><td class="wname">Nombre</td><td>Base</td><td>Check</td>${DAYS_KEYS.map(d => `<td class="wd">${DAY_SHORT[d]}</td>`).join("")}<td>Tot</td></tr>`;
     let body = "";
-    for (const emp of employees) {
-      const sp = splitByEmp.get(emp.id)!;
+    for (const { emp, sp } of rs) {
       const ok = sp.missing === 0;
+      let dayc = "";
+      for (const d of DAYS_KEYS) {
+        const code = sched.schedule?.[emp.id]?.[d]?.code;
+        if (code === "normal") dayc += `<td class="wc work mono">${sp.days[d].hours}</td>`;
+        else if (code && code !== "off") dayc += `<td class="wc abs">${code.toUpperCase().slice(0,3)}</td>`;
+        else dayc += `<td class="wc off">–</td>`;
+      }
       body += `<tr>
-        <td class="sname">${esc(emp.name)}</td>
+        <td class="wname">${esc(emp.name)}</td>
         <td class="mono">${emp.weekly_hours}</td>
-        <td class="mono${sp.compl > 0 ? " amber" : ""}"><b>${sp.total}</b></td>
         <td><span class="chk ${ok ? "ok" : "no"}">${ok ? "ok" : "✕"}</span></td>
+        ${dayc}
+        <td class="mono wtot${sp.compl > 0 ? " amber" : ""}"><b>${sp.total}</b></td>
       </tr>`;
     }
-    return `<div class="cell summary">
-      <div class="daylabel" style="color:${c}">RESUMEN</div>
-      <table class="stbl">
-        <thead><tr><td>Nombre</td><td>Base</td><td>Tot</td><td>Check</td></tr></thead>
-        <tbody>${body}</tbody>
-      </table>
+    const totRow = `<tr class="ftot"><td class="wname">Total horas</td><td></td><td></td>${dayTotals.map(t => `<td class="mono"><b>${t}</b></td>`).join("")}<td class="mono"><b>${grand}</b></td></tr>`;
+    const perRow = `<tr class="fper"><td class="wname">Personas</td><td></td><td></td>${dayPeople.map(n => `<td class="mono">${n}</td>`).join("")}<td></td></tr>`;
+    return `<div class="wsum">
+      <div class="daylabel" style="color:${c}">RESUMEN SEMANAL</div>
+      <table class="wtbl"><thead>${head}</thead><tbody>${body}</tbody><tfoot>${totRow}${perRow}</tfoot></table>
     </div>`;
   }
 
-  const cells = DAYS_KEYS.map(dayCell).join("") + summaryCell();
+  const cells = DAYS_KEYS.map(dayCell).join("");
 
   const html = `<!doctype html><html><head><meta charset="utf-8"><style>
 @page{size:A3 portrait;margin:6mm}
@@ -163,7 +176,7 @@ html,body{font-family:'Helvetica Neue',Arial,sans-serif;color:#16202e;font-size:
 .empty{font-size:6pt;color:#aab2bd;font-style:italic;padding:2mm}
 .erow,.rulrow,.prow{display:flex;align-items:stretch;height:3.2mm;border-top:0.15mm solid #eef0f3}
 .rulrow{height:3mm;border-top:0}
-.prow{height:3mm;border-top:0.3mm solid #c9ced6;background:#fafbfc}
+.prow{height:3mm;border-top:0.3mm solid #c9ced6}
 .ename{flex:0 0 22mm;width:22mm;font-size:5.6pt;line-height:3.2mm;padding-left:1mm;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:0.2mm solid #d7dbe1}
 .prow .ename{color:#aab2bd;font-style:italic;font-size:5.4pt;text-align:right;padding-right:1mm}
 .trk{position:relative;flex:1;overflow:hidden}
@@ -175,14 +188,22 @@ html,body{font-family:'Helvetica Neue',Arial,sans-serif;color:#16202e;font-size:
 .bar{position:absolute;top:0.5mm;height:2.2mm;border-radius:0.5mm}
 .blab{position:absolute;top:0.7mm;font-size:5pt;font-weight:700;color:#fff;font-family:'Courier New',monospace;padding-left:0.4mm;white-space:nowrap;z-index:2}
 .blab.end{transform:translateX(-100%);padding-left:0;padding-right:0.4mm}
-.pcell{position:absolute;top:0;bottom:0;text-align:center;font-size:5.4pt;font-weight:700;color:#3a6b5b;line-height:3mm}
-.pcell.hot{color:#0f6e56;font-weight:800}
-.summary .stbl{width:100%;border-collapse:collapse;font-size:6pt}
-.stbl thead td{font-size:5pt;font-weight:700;color:#8a93a0;text-transform:uppercase;letter-spacing:.04em;padding:0.6mm 1mm;border-bottom:0.3mm solid #c9ced6;background:#fafbfc}
-.stbl td{padding:0.5mm 1mm;border-bottom:0.15mm solid #eef0f3;text-align:center}
-.stbl td.sname{text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:34mm}
-.stbl td.mono{font-family:'Courier New',monospace}
-.stbl td.amber b{color:${AMBER}}
+.pcell{position:absolute;top:0;bottom:0;text-align:center;font-size:5.4pt;font-weight:700;color:#6b7686;line-height:3mm}
+.pcell.hot{color:#16202e;font-weight:700}
+.wsum{break-inside:avoid;page-break-inside:avoid;margin-top:2.5mm;border:0.18mm solid #dde0e6;border-radius:1mm;overflow:hidden}
+.wtbl{width:100%;border-collapse:collapse;font-size:6pt;table-layout:fixed}
+.wtbl thead td{font-size:5.2pt;font-weight:700;color:#8a93a0;text-transform:uppercase;letter-spacing:.04em;padding:0.7mm 1mm;border-bottom:0.3mm solid #c9ced6;background:#fafbfc;text-align:center}
+.wtbl td{padding:0.6mm 1mm;border-bottom:0.15mm solid #eef0f3;text-align:center}
+.wtbl td.mono{font-family:'Courier New',monospace}
+.wtbl td.wname{text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.wtbl td.wd{width:8%}
+.wtbl td.wc.work{background:#e7f5ef;color:#0f6e56;font-weight:700}
+.wtbl td.wc.abs{background:#f0f0f0;color:#5a657c;font-weight:700}
+.wtbl td.wc.off{color:#aab2bd}
+.wtbl td.wtot{font-weight:700}
+.wtbl td.wtot.amber b{color:${AMBER}}
+.wtbl tr.ftot td{border-top:0.3mm solid #c9ced6;font-weight:700;padding-top:0.8mm}
+.wtbl tr.fper td{color:#6b7686;font-size:5.6pt;padding-bottom:0.8mm}
 .chk{display:inline-block;padding:0.3mm 1.4mm;border-radius:2mm;font-size:5.4pt;font-weight:800}
 .chk.ok{background:#d8f1e7;color:#0f6e56}
 .chk.no{background:#fbe1e8;color:#a50044}
@@ -193,6 +214,7 @@ html,body{font-family:'Helvetica Neue',Arial,sans-serif;color:#16202e;font-size:
 <div class="accent"></div>
 <div class="key"><span><i style="background:${c}"></i>ordinaria</span><span><i style="background:${AMBER}"></i>complementaria</span></div>
 <div class="grid">${cells}</div>
+${summarySection()}
 <div class="foot"><b>Camp Nou Planner</b></div>
 </body></html>`;
 
