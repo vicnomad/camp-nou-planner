@@ -600,8 +600,9 @@ function AvailabilityEditor({ availability, onChange, openMin, closeMin }: {
 
   function setSimple(v: string) {
     if (v === "W") {
-      // Ventana por defecto = todo el horario de tienda; el usuario la ajusta con la franja.
-      onChange({ from: mhm(openMin), to: mhm(closeMin) });
+      // Ventana por defecto = desde el montaje hasta el cierre real del día (incl. partidos).
+      // El usuario la ajusta con la franja; "Cierre" = extremo abierto que sigue el cierre del día.
+      onChange({ from: mhm(openMin), to: "Cierre" });
       setExpanded(false);
       return;
     }
@@ -624,7 +625,8 @@ function AvailabilityEditor({ availability, onChange, openMin, closeMin }: {
   const win = isWindow ? (availability as { from: string; to: string }) : null;
   const span = Math.max(30, closeMin - openMin);
   const fromMin = win ? Math.min(Math.max(tmin(win.from), openMin), closeMin) : openMin;
-  const toMin = win ? Math.min(Math.max(tmin(win.to), openMin), closeMin) : closeMin;
+  // "Cierre" (extremo abierto) se dibuja en el tope derecho de la pista.
+  const toMin = win ? (win.to === "Cierre" ? closeMin : Math.min(Math.max(tmin(win.to), openMin), closeMin)) : closeMin;
   const pct = (m: number) => ((m - openMin) / span) * 100;
   const trackRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<"from" | "to" | null>(null);
@@ -647,7 +649,8 @@ function AvailabilityEditor({ availability, onChange, openMin, closeMin }: {
       onChange({ from: mhm(nf), to: win.to });
     } else {
       const nt = Math.min(closeMin, Math.max(m, fromMin + 30));
-      onChange({ from: win.from, to: mhm(nt) });
+      // En el tope derecho → "Cierre" (sigue el cierre del día); si no, hora concreta (tope duro).
+      onChange({ from: win.from, to: nt >= closeMin ? "Cierre" : mhm(nt) });
     }
   }
   function onTrackUp() { dragRef.current = null; }
@@ -702,7 +705,7 @@ function AvailabilityEditor({ availability, onChange, openMin, closeMin }: {
             ))}
           </div>
           <div style={{ fontSize: 11, color: "var(--ink-2)", fontWeight: 600, marginTop: 4 }}>
-            Puede trabajar de {win.from} a {win.to}
+            Puede trabajar de {win.from} a {win.to === "Cierre" ? "el cierre" : win.to}
           </div>
         </div>
       )}

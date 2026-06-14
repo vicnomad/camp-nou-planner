@@ -198,7 +198,9 @@ def solve(data):
             dc = DC[d]
             if isinstance(av, dict) and "from" in av and "to" in av:
                 av_d = "Pers"
-                lo, hi = _tm(av["from"]), _tm(av["to"])
+                lo = _tm(av["from"])
+                # "Cierre" = hasta el fin REAL del día (incluye cierre ampliado de partido/inventario).
+                hi = (dc["base"] + dc["N"]*30) if av["to"] == "Cierre" else _tm(av["to"])
             else:
                 av_d = _av_for_day(av, d)
                 if av_d == "X":
@@ -247,7 +249,8 @@ def solve(data):
             dc = DC[d]
             av = ei["av"]
             if isinstance(av, dict) and "from" in av and "to" in av:
-                lo, hi = _tm(av["from"]), _tm(av["to"])
+                lo = _tm(av["from"])
+                hi = (dc["base"] + dc["N"]*30) if av["to"] == "Cierre" else _tm(av["to"])
             else:
                 av_d = _av_for_day(av, d)
                 if av_d == "X":
