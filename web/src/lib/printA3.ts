@@ -1,8 +1,9 @@
 /**
- * A3 portrait print sheet — one page per week, per-day axis.
- * Each day has its OWN time axis (montaje→cierre), filling full width.
+ * A3 portrait print sheet — UNA página.
+ * Bloques Gantt por día en 2 columnas (L|M, X|J, V|S, D|Resumen), eje horario completo
+ * con línea divisoria por hora y parte complementaria del turno en otro color (ámbar).
  */
-import type { Department, Employee, SolveResult, StoreHours } from "./types";
+import type { Department, Employee, SolveResult, StoreHours, DayKey } from "./types";
 import { DAYS_KEYS } from "./types";
 import { weekComplSplit } from "./weekCompl";
 import { editedDaysOf, type ScheduleEdits } from "./schedule";
@@ -20,162 +21,179 @@ export function printA3(
 ) {
   const p = dept.params;
   const c = dept.color;
+  const AMBER = "#d4940a";
   const preM = p.preopen?.minutes ?? 30;
   const postM = p.postclose?.minutes ?? 30;
   const dpw = p.days_per_week ?? 5;
 
-  const absences: string[] = [];
-
-  // Weekly split per employee: el exceso recae en los días editados a mano (luego MON→SUN).
+  // Weekly split per empleado (base completa; weekComplSplit ya reduce por ausencias del cuadrante).
   const splitByEmp = new Map(employees.map(e =>
     [e.id, weekComplSplit(sched.schedule?.[e.id], e.weekly_hours, e.weekly_hours / dpw, editedDaysOf(edits, e.id))] as const));
 
-  // Build each day block
-  let blocks = "";
-  for (const d of DAYS_KEYS) {
+  // ── Un bloque (media celda) por día ──
+  function dayCell(d: DayKey): string {
+    const label = `<div class="daylabel" style="color:${c}">${DAY_ES[d] ?? d}</div>`;
     const sh = storeHours[d];
-    if (!sh?.open || !sh?.close) continue;
+    if (!sh?.open || !sh?.close) {
+      return `<div class="cell">${label}<div class="empty">Cerrado</div></div>`;
+    }
     const openM = tm(sh.open);
     let closeM = tm(sh.close);
     if (closeM <= openM) closeM += 1440;
     let dayStart = openM - preM;
     let dayEnd = closeM + postM;
     if (sh.extra) { let et = tm(sh.extra.to); if (et <= openM) et += 1440; dayEnd = Math.max(dayEnd, et); }
-    dayStart = Math.floor(dayStart / 30) * 30;
-    dayEnd = Math.ceil(dayEnd / 30) * 30;
-    const slots = (dayEnd - dayStart) / 30;
-    if (slots <= 0) continue;
+    dayStart = Math.floor(dayStart / 60) * 60;   // a hora en punto para que la regla cuadre
+    dayEnd = Math.ceil(dayEnd / 60) * 60;
+    const span = dayEnd - dayStart;
+    if (span <= 0) return `<div class="cell">${label}<div class="empty">—</div></div>`;
+    const pct = (m: number) => ((m - dayStart) / span) * 100;
 
-    // Collect working employees
-    const rows: {name:string;wh:number;hpd:number;start:number;end:number;hours:number;normH:number;complH:number}[] = [];
+    // Empleados que trabajan ese día
+    const rows: {name:string;start:number;end:number;normH:number;complH:number}[] = [];
     for (const emp of employees) {
       const en = sched.schedule?.[emp.id]?.[d];
-      if (!en) continue;
-      if (en.code === "normal" && en.start && en.end) {
-        const hpd = emp.weekly_hours / dpw;
+      if (en?.code === "normal" && en.start && en.end) {
         let endM2 = tm(en.end); if (endM2 <= tm(en.start)) endM2 += 1440;
         const ds = splitByEmp.get(emp.id)!.days[d];
-        rows.push({name:emp.name, wh:emp.weekly_hours, hpd, start:tm(en.start), end:endM2, hours:en.hours??hpd, normH:ds.norm, complH:ds.compl});
-      } else if (en.code && en.code !== "off") {
-        absences.push(`${emp.name} (${en.code.toUpperCase()})`);
+        rows.push({ name: emp.name, start: tm(en.start), end: endM2, normH: ds.norm, complH: ds.compl });
       }
     }
-    rows.sort((a,b) => a.start - b.start);
-    if (rows.length === 0) continue;
+    rows.sort((a,b) => a.start - b.start || a.name.localeCompare(b.name));
+    if (rows.length === 0) return `<div class="cell">${label}<div class="empty">Sin turnos</div></div>`;
 
-    // Meta column widths (mm): name 42, base 11, entrada 11, norm 9, compl 9 = 82mm
-    // Available for slots: 297 - 10 (margins) - 82 = 205mm / slots
-    const slotW = Math.max(3, (297 - 10 - 82) / slots);
+    const firstHour = Math.ceil(dayStart / 60) * 60;
 
-    // Build colgroup
-    const slotCol = `<col style="width:${slotW.toFixed(2)}mm">`;
-    const cg = `<colgroup><col style="width:42mm"><col style="width:11mm"><col style="width:11mm"><col style="width:9mm"><col style="width:9mm">${slotCol.repeat(slots)}</colgroup>`;
-
-    // Hour ruler
-    let ruler = `<tr class="ruler"><td colspan="5" class="mr"></td>`;
-    for (let m = dayStart; m < dayEnd; m += 30) {
-      const isHour = m % 60 === 0;
-      const isBand = m < openM || m >= closeM;
-      if (isHour) {
-        ruler += `<td colspan="2" class="hr${isBand?" band":""}">${hh(m)}</td>`;
-        m += 30; // skip the :30 slot (already in colspan=2)
-        if (m >= dayEnd) break;
-        continue;
-      }
+    // Overlay reutilizable: sombreado fuera de horario + líneas verticales por hora.
+    function overlay(): string {
+      let s = "";
+      if (openM > dayStart) s += `<i class="band" style="left:0;width:${pct(openM)}%"></i>`;
+      if (closeM < dayEnd) s += `<i class="band" style="left:${pct(closeM)}%;width:${(100 - pct(closeM)).toFixed(2)}%"></i>`;
+      for (let h = firstHour; h < dayEnd; h += 60) if (h > dayStart) s += `<i class="vline" style="left:${pct(h)}%"></i>`;
+      return s;
     }
-    // Simpler approach: iterate by hours
-    ruler = `<tr class="ruler"><td colspan="5" class="mr"></td>`;
-    for (let m = dayStart; m < dayEnd; m += 60) {
-      const isBand = m < openM || m >= closeM;
-      const colsHere = Math.min(2, (dayEnd - m) / 30);
-      ruler += `<td colspan="${colsHere}" class="hr${isBand?" band":""}">${hh(m)}</td>`;
-    }
-    ruler += `</tr>`;
 
-    // Employee rows
+    // Regla horaria (etiqueta por cada hora en punto)
+    let ruler = "";
+    for (let h = dayStart; h < dayEnd; h += 60) {
+      const band = h < openM || h >= closeM;
+      ruler += `<span class="hrlbl${band ? " bandtxt" : ""}" style="left:${pct(h)}%">${hh(h)}</span>`;
+    }
+
+    // Filas de empleado
     let empRows = "";
     for (const r of rows) {
-      const s0 = Math.round((r.start - dayStart) / 30);
-      const sl = Math.round((r.end - r.start) / 30);
-      const normSlots = Math.min(sl, Math.round(r.normH * 2));
-      const complSlots = Math.max(0, sl - normSlots);
-      const normH = r.normH;
-      const complH = r.complH;
-      const before = s0;
-      const after = slots - s0 - sl;
-
-      empRows += `<tr>`;
-      empRows += `<td class="name">${esc(r.name)}</td>`;
-      empRows += `<td class="meta mono">${r.wh}·${r.hpd}h</td>`;
-      empRows += `<td class="meta mono">${hh(r.start)}</td>`;
-      empRows += `<td class="meta mono">${normH}h</td>`;
-      empRows += `<td class="meta mono${complH > 0 ? " compl" : ""}">${complH > 0 ? complH + "h" : "—"}</td>`;
-      if (before > 0) empRows += `<td colspan="${before}"></td>`;
-      if (normSlots > 0) empRows += `<td class="bar" colspan="${normSlots}" style="background:${c}"><span>${hh(r.start)}–${hh(r.end % 1440)}</span></td>`;
-      if (complSlots > 0) empRows += `<td class="bar amber" colspan="${complSlots}">${normSlots === 0 ? `<span>${hh(r.start)}–${hh(r.end%1440)}</span>` : ""}</td>`;
-      if (after > 0) empRows += `<td colspan="${after}"></td>`;
-      empRows += `</tr>`;
+      const shiftEnd = r.end;
+      const normEnd = r.start + Math.min(r.normH * 60, shiftEnd - r.start);
+      const normW = (normEnd - r.start) / span * 100;
+      const complW = (shiftEnd - normEnd) / span * 100;
+      const left = pct(r.start);
+      let bars = "";
+      if (normW > 0.01) bars += `<i class="bar" style="left:${left.toFixed(2)}%;width:${normW.toFixed(2)}%;background:${c}"></i>`;
+      if (complW > 0.01) bars += `<i class="bar" style="left:${pct(normEnd).toFixed(2)}%;width:${complW.toFixed(2)}%;background:${AMBER}"></i>`;
+      // Etiquetas (entrada siempre; salida si el turno es ancho)
+      const wide = (shiftEnd - r.start) / span > 0.16;
+      const lbl = `<span class="blab" style="left:${left.toFixed(2)}%">${hh(r.start)}</span>` +
+        (wide ? `<span class="blab end" style="left:${pct(shiftEnd).toFixed(2)}%">${hh(shiftEnd % 1440)}</span>` : "");
+      empRows += `<div class="erow"><div class="ename">${esc(r.name)}</div><div class="trk">${overlay()}${bars}${lbl}</div></div>`;
     }
 
-    // Count row
-    const counts = new Array(slots).fill(0);
-    for (const r of rows) {
-      const s0 = Math.round((r.start - dayStart) / 30);
-      const sl = Math.round((r.end - r.start) / 30);
-      for (let i = 0; i < sl; i++) { const j = s0+i; if (j >= 0 && j < slots) counts[j]++; }
+    // Presencia por hora (turnos que cubren cada hora)
+    let maxCnt = 0;
+    const buckets: {from:number;to:number;n:number}[] = [];
+    for (let h = dayStart; h < dayEnd; h += 60) {
+      const from = h, to = Math.min(h + 60, dayEnd);
+      const n = rows.filter(r => r.start < to && r.end > from).length;
+      if (n > maxCnt) maxCnt = n;
+      buckets.push({ from, to, n });
     }
-    const countCells = counts.map(n => `<td class="cnt">${n||""}</td>`).join("");
+    const presCells = buckets.map(b => {
+      const w = (b.to - b.from) / span * 100;
+      const hot = maxCnt > 0 && b.n === maxCnt && b.n > 0;
+      const bg = b.n > 0 ? `background:rgba(15,110,86,${(0.07 + 0.13 * b.n).toFixed(3)})` : "";
+      return `<i class="pcell${hot ? " hot" : ""}" style="left:${pct(b.from).toFixed(2)}%;width:${w.toFixed(2)}%;${bg}">${b.n || ""}</i>`;
+    }).join("");
 
-    blocks += `<div class="dayblock">
-      <div class="daylabel" style="color:${c}">${DAY_ES[d] ?? d}</div>
-      <table>${cg}
-        <thead>${ruler}
-          <tr class="metahead"><td>Nombre</td><td>Base</td><td>Ent.</td><td>Norm.</td><td>Compl.</td><td colspan="${slots}"></td></tr>
-        </thead>
-        <tbody>${empRows}
-          <tr class="countrow"><td class="cntlbl" colspan="5">personas</td>${countCells}</tr>
-        </tbody>
+    return `<div class="cell">
+      ${label}
+      <div class="rulrow"><div class="ename"></div><div class="trk rul">${overlay()}${ruler}</div></div>
+      ${empRows}
+      <div class="prow"><div class="ename">presencia</div><div class="trk pres">${overlay()}${presCells}</div></div>
+    </div>`;
+  }
+
+  // ── Celda Resumen (8ª) ──
+  function summaryCell(): string {
+    let body = "";
+    for (const emp of employees) {
+      const sp = splitByEmp.get(emp.id)!;
+      const ok = sp.missing === 0;
+      body += `<tr>
+        <td class="sname">${esc(emp.name)}</td>
+        <td class="mono">${emp.weekly_hours}</td>
+        <td class="mono${sp.compl > 0 ? " amber" : ""}"><b>${sp.total}</b></td>
+        <td><span class="chk ${ok ? "ok" : "no"}">${ok ? "ok" : "✕"}</span></td>
+      </tr>`;
+    }
+    return `<div class="cell summary">
+      <div class="daylabel" style="color:${c}">RESUMEN</div>
+      <table class="stbl">
+        <thead><tr><td>Nombre</td><td>Base</td><td>Tot</td><td>Check</td></tr></thead>
+        <tbody>${body}</tbody>
       </table>
     </div>`;
   }
 
-  const uniqueAbs = [...new Set(absences)];
+  const cells = DAYS_KEYS.map(dayCell).join("") + summaryCell();
 
   const html = `<!doctype html><html><head><meta charset="utf-8"><style>
-@page{size:A3 portrait;margin:5mm}
+@page{size:A3 portrait;margin:6mm}
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{font-family:'Helvetica Neue',Arial,sans-serif;color:#16202e;font-size:6pt}
 .head{display:flex;align-items:center;justify-content:space-between;background:#0b1f3a;color:#fff;padding:2mm 3.5mm;border-radius:2mm 2mm 0 0}
 .head .t{font-weight:800;font-size:11pt;letter-spacing:.3px}
 .head .t b{color:#ffcb05}
 .head .w{font-size:9pt;opacity:.92}
-.accent{height:1.4mm;background:${c};margin-bottom:1mm}
-.dayblock{page-break-inside:avoid;margin-bottom:0.8mm}
-.daylabel{font-weight:800;font-size:7.5pt;padding:0.5mm 1mm;background:#f3f5f8;border:0.18mm solid #dde0e6;letter-spacing:.4px}
-table{width:100%;border-collapse:collapse;table-layout:fixed}
-td{height:3mm;border:0.15mm solid #e6e8ec;padding:0;font-size:5.8pt;overflow:hidden;line-height:1}
-tr.ruler td{border:0;height:2.5mm}
-td.mr{border-bottom:0.3mm solid #c9ced6}
-td.hr{font-size:6.5pt;color:#6b7686;text-align:left;padding-left:0.5mm;font-weight:700;border-bottom:0.3mm solid #c9ced6;font-family:'Courier New',monospace}
-td.hr.band{background:#f7f8fa;color:#b0b8c6}
-tr.metahead td{font-size:5pt;font-weight:700;color:#8a93a0;text-transform:uppercase;letter-spacing:.04em;padding:0.3mm 0.5mm;border-bottom:0.3mm solid #c9ced6;height:2.2mm}
-td.name{padding-left:0.8mm;font-size:5.8pt;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:0.2mm solid #d7dbe1}
-td.meta{text-align:center;font-size:5.5pt;color:#5a657c;border-right:0.2mm solid #e6e8ec}
-td.meta.mono{font-family:'Courier New',monospace}
-td.meta.compl{color:#a50044;font-weight:700}
-td.bar{position:relative}
-td.bar span{color:#fff;font-size:5pt;font-weight:700;padding-left:0.6mm;font-family:'Courier New',monospace;white-space:nowrap}
-td.bar.amber{background:#d4940a}
-tr.countrow td{height:2mm;background:#fafbfc;border-top:0.3mm solid #c9ced6}
-td.cnt{text-align:center;font-size:5.5pt;color:#8a93a0;font-weight:700}
-td.cntlbl{color:#aab2bd;font-style:italic;font-size:5.5pt;text-align:right;padding-right:1mm}
-.foot{font-size:6.5pt;color:#6b7686;padding:1mm 1mm 0}
+.accent{height:1.4mm;background:${c}}
+.key{display:flex;gap:4mm;align-items:center;font-size:6.5pt;color:#6b7686;padding:1mm 1mm 1.5mm}
+.key i{display:inline-block;width:3mm;height:2mm;border-radius:0.4mm;vertical-align:middle;margin-right:1mm}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:1.6mm}
+.cell{break-inside:avoid;page-break-inside:avoid;border:0.18mm solid #dde0e6;border-radius:1mm;overflow:hidden}
+.daylabel{font-weight:800;font-size:7.5pt;padding:0.6mm 1.2mm;background:#f3f5f8;border-bottom:0.18mm solid #dde0e6;letter-spacing:.4px}
+.empty{font-size:6pt;color:#aab2bd;font-style:italic;padding:2mm}
+.erow,.rulrow,.prow{display:flex;align-items:stretch;height:3.2mm;border-top:0.15mm solid #eef0f3}
+.rulrow{height:3mm;border-top:0}
+.prow{height:3mm;border-top:0.3mm solid #c9ced6;background:#fafbfc}
+.ename{flex:0 0 22mm;width:22mm;font-size:5.6pt;line-height:3.2mm;padding-left:1mm;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:0.2mm solid #d7dbe1}
+.prow .ename{color:#aab2bd;font-style:italic;font-size:5.4pt;text-align:right;padding-right:1mm}
+.trk{position:relative;flex:1;overflow:hidden}
+.trk.rul{border-bottom:0.3mm solid #c9ced6}
+.band{position:absolute;top:0;bottom:0;background:#f5f6f9}
+.vline{position:absolute;top:0;bottom:0;width:0;border-left:0.15mm solid #d2d7df}
+.hrlbl{position:absolute;top:0.4mm;font-size:5.4pt;font-weight:700;color:#6b7686;font-family:'Courier New',monospace;padding-left:0.3mm}
+.hrlbl.bandtxt{color:#b8c0cc}
+.bar{position:absolute;top:0.5mm;height:2.2mm;border-radius:0.5mm}
+.blab{position:absolute;top:0.7mm;font-size:5pt;font-weight:700;color:#fff;font-family:'Courier New',monospace;padding-left:0.4mm;white-space:nowrap;z-index:2}
+.blab.end{transform:translateX(-100%);padding-left:0;padding-right:0.4mm}
+.pcell{position:absolute;top:0;bottom:0;text-align:center;font-size:5.4pt;font-weight:700;color:#3a6b5b;line-height:3mm}
+.pcell.hot{color:#0f6e56;font-weight:800}
+.summary .stbl{width:100%;border-collapse:collapse;font-size:6pt}
+.stbl thead td{font-size:5pt;font-weight:700;color:#8a93a0;text-transform:uppercase;letter-spacing:.04em;padding:0.6mm 1mm;border-bottom:0.3mm solid #c9ced6;background:#fafbfc}
+.stbl td{padding:0.5mm 1mm;border-bottom:0.15mm solid #eef0f3;text-align:center}
+.stbl td.sname{text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:34mm}
+.stbl td.mono{font-family:'Courier New',monospace}
+.stbl td.amber b{color:${AMBER}}
+.chk{display:inline-block;padding:0.3mm 1.4mm;border-radius:2mm;font-size:5.4pt;font-weight:800}
+.chk.ok{background:#d8f1e7;color:#0f6e56}
+.chk.no{background:#fbe1e8;color:#a50044}
+.foot{font-size:6pt;color:#aab2bd;padding:1.5mm 1mm 0;text-align:right}
 .foot b{color:${c}}
 </style></head><body>
 <div class="head"><div class="t">CUADRANTE · <b>${esc(dept.name)}</b></div><div class="w">${esc(weekLbl)} · Camp Nou Planner</div></div>
 <div class="accent"></div>
-${blocks}
-<div class="foot">${uniqueAbs.length>0?`Ausencias semana: <b>${uniqueAbs.join("</b> · <b>")}</b> · `:""}Solo se muestran las personas que trabajan cada día.</div>
+<div class="key"><span><i style="background:${c}"></i>ordinaria</span><span><i style="background:${AMBER}"></i>complementaria</span></div>
+<div class="grid">${cells}</div>
+<div class="foot"><b>Camp Nou Planner</b></div>
 </body></html>`;
 
   const w = window.open("","_blank");
