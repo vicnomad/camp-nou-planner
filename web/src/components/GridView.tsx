@@ -55,6 +55,7 @@ export default function GridView({ department, employees, allEmployees, weekOver
     const m: Record<string,StoreHours> = {};
     for (const d of DAYS_KEYS) {
       m[d] = { ...params.store_hours[d] };
+      delete m[d].extra;   // 'extra' (banda de inventario) retirada: ignora cualquier residuo en los datos
       // Participación: el depto solo entra en el evento si tiene curva definida para esa letra (algún valor > 0).
       const ev = events[d];
       const eid = ev?.eventId;                                       // SOLO eventId (sin compat .letter)
