@@ -9,6 +9,8 @@ export interface BillingProfile {
   [hour: string]: number;
 }
 
+export interface EventType { id: string; label: string; close?: string; }
+
 export interface Billing {
   daily: Record<string, number>;
   productivity_eur_per_person_hour: number;

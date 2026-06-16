@@ -6,7 +6,7 @@ import { onAuthStateChanged, signInWithEmailAndPassword, type User } from "fireb
 import {
   collection, onSnapshot, query, where, doc, updateDoc, getDoc, setDoc, deleteDoc,
 } from "firebase/firestore";
-import type { Department, Employee, SolveResult, Absence, BillingProfile } from "@/lib/types";
+import type { Department, Employee, SolveResult, Absence, BillingProfile, EventType } from "@/lib/types";
 import { DAYS_KEYS } from "@/lib/types";
 import { getMonday, fmtDate, weekIsoId, isoWeekNumber, weekLabel, shiftWeek } from "@/lib/week";
 import { exportCegidXlsx } from "@/lib/exportCegid";
@@ -45,6 +45,8 @@ export default function Home() {
   const [storeBilling, setStoreBilling] = useState<Record<string, number>>({});
   // Curvas horarias a nivel TIENDA (Normal + A–E), compartidas por todos los departamentos.
   const [storeProfiles, setStoreProfiles] = useState<Record<string, BillingProfile>>({});
+  // Catálogo de eventos de tienda (nombre + cierre por defecto). Ids internos = letras.
+  const [eventTypes, setEventTypes] = useState<EventType[]>([]);
   const generateRef = useRef<(() => void) | null>(null);
 
   // Puerta de acceso (Firebase Auth, sesión persistida).
@@ -92,22 +94,37 @@ export default function Home() {
     return unsub;
   }, [currentDeptId, authUser]);
 
-  // Load store-level hourly curves (Normal + A–E), shared by all departments. Once, no per-week.
+  // Catálogo de eventos derivado de unas curvas: claves != "normal" → {id, label} ("A" se etiqueta "Partido").
+  const seedTypesFrom = (profiles: Record<string, BillingProfile> | undefined): EventType[] =>
+    Object.keys(profiles ?? {}).filter((k) => k !== "normal").map((id) => ({ id, label: id === "A" ? "Partido" : id }));
+
+  // Load store-level hourly curves (Normal + A–E) + catálogo de eventos. Once, no per-week.
   const [seedNeeded, setSeedNeeded] = useState(false);
   useEffect(() => {
     if (!authUser) return;
     getDoc(doc(db, "storeProfiles", "default")).then((snap) => {
-      if (snap.exists()) setStoreProfiles((snap.data().profiles as Record<string, BillingProfile>) ?? {});
-      else setSeedNeeded(true); // doc nuevo: sembrar desde el primer departamento
+      if (snap.exists()) {
+        const data = snap.data();
+        setStoreProfiles((data.profiles as Record<string, BillingProfile>) ?? {});
+        if (data.eventTypes) setEventTypes(data.eventTypes as EventType[]);
+        else {
+          // Doc previo a Fase 3: siembra el catálogo desde las curvas existentes.
+          const seedTypes = seedTypesFrom(data.profiles as Record<string, BillingProfile>);
+          setEventTypes(seedTypes);
+          if (seedTypes.length) setDoc(doc(db, "storeProfiles", "default"), { eventTypes: seedTypes }, { merge: true });
+        }
+      } else setSeedNeeded(true); // doc nuevo: sembrar desde el primer departamento
     });
   }, [authUser]);
-  // Migración: si no existía el doc de tienda, siémbralo una vez con las curvas del primer depto.
+  // Migración: si no existía el doc de tienda, siémbralo una vez con las curvas + catálogo del primer depto.
   useEffect(() => {
     if (!seedNeeded) return;
     const seed = departments[0]?.params?.billing?.profiles;
     if (seed && Object.keys(seed).length > 0) {
+      const seedTypes = seedTypesFrom(seed);
       setStoreProfiles(seed);
-      setDoc(doc(db, "storeProfiles", "default"), { profiles: seed });
+      setEventTypes(seedTypes);
+      setDoc(doc(db, "storeProfiles", "default"), { profiles: seed, eventTypes: seedTypes });
       setSeedNeeded(false);
     }
   }, [seedNeeded, departments]);
@@ -115,7 +132,13 @@ export default function Home() {
   const saveStoreProfiles = useCallback(async (profiles: Record<string, BillingProfile>) => {
     setStoreProfiles(profiles);
     if (!authUser) return;
-    await setDoc(doc(db, "storeProfiles", "default"), { profiles });
+    await setDoc(doc(db, "storeProfiles", "default"), { profiles }, { merge: true });
+  }, [authUser]);
+
+  const saveEventTypes = useCallback(async (types: EventType[]) => {
+    setEventTypes(types);
+    if (!authUser) return;
+    await setDoc(doc(db, "storeProfiles", "default"), { eventTypes: types }, { merge: true });
   }, [authUser]);
 
   // Load saved schedule + overrides when dept or week changes
@@ -267,6 +290,7 @@ export default function Home() {
               scheduleEdits={scheduleEdits} onScheduleEditsChange={setScheduleEdits}
               showToast={showToast} generateRef={generateRef}
               weekMonday={weekMonday} storeBilling={storeBilling} storeProfiles={storeProfiles}
+              eventTypes={eventTypes} onSaveEventTypes={saveEventTypes}
             />
           )}
           {view === "team" && currentDept && (
@@ -279,7 +303,7 @@ export default function Home() {
           )}
           {view === "params" && currentDept && (
             <ParamsView department={currentDept} onUpdateParams={updateParams}
-              storeProfiles={storeProfiles} onSaveStoreProfiles={saveStoreProfiles} />
+              storeProfiles={storeProfiles} onSaveStoreProfiles={saveStoreProfiles} eventTypes={eventTypes} />
           )}
           {view === "billing" && (
             <BillingView departments={departments} weekMonday={weekMonday} showToast={showToast}

@@ -3,7 +3,7 @@
 import { useState, useCallback, useMemo, useEffect, useRef, type MutableRefObject } from "react";
 import { db } from "@/lib/firebase";
 import { doc, setDoc, getDoc, deleteDoc } from "firebase/firestore";
-import type { Department, Employee, SolveResult, ScheduleEntry, CoverageSlot, DayKey, StoreHours, BillingProfile } from "@/lib/types";
+import type { Department, Employee, SolveResult, ScheduleEntry, CoverageSlot, DayKey, StoreHours, BillingProfile, EventType } from "@/lib/types";
 import { DAYS_KEYS, DAY_LABELS, DAY_SHORT } from "@/lib/types";
 import { weekLabel, weekIsoId } from "@/lib/week";
 import { weekComplSplit } from "@/lib/weekCompl";
@@ -13,7 +13,7 @@ import type { WeekOverride } from "@/app/page";
 
 const SOLVER_URL = process.env.NEXT_PUBLIC_SOLVER_URL || "https://camp-nou-engine.vercel.app";
 
-interface WeekEvent { letter: string; close?: string; }
+interface WeekEvent { eventId: string; close?: string; }
 
 interface Props {
   department: Department; employees: Employee[]; allEmployees: Employee[];
@@ -24,13 +24,15 @@ interface Props {
   weekMonday: string;
   storeBilling: Record<string, number>;
   storeProfiles: Record<string, BillingProfile>;
+  eventTypes: EventType[];
+  onSaveEventTypes: (t: EventType[]) => void;
 }
 
 function hh(m: number) { const x=((m%1440)+1440)%1440; return String(Math.floor(x/60)).padStart(2,"0")+":"+String(x%60).padStart(2,"0"); }
 function tm(t: string) { const [h,m]=t.split(":").map(Number); return h*60+m; }
 function initials(name: string) { return name.split(",")[0].slice(0,2).toUpperCase(); }
 
-export default function GridView({ department, employees, allEmployees, weekOverrides, schedule, onSchedule, scheduleEdits, onScheduleEditsChange, showToast, generateRef, weekMonday, storeBilling, storeProfiles }: Props) {
+export default function GridView({ department, employees, allEmployees, weekOverrides, schedule, onSchedule, scheduleEdits, onScheduleEditsChange, showToast, generateRef, weekMonday, storeBilling, storeProfiles, eventTypes, onSaveEventTypes }: Props) {
   const [mode, setMode] = useState<"dia"|"semana">("dia");
   const [dayIdx, setDayIdx] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -40,6 +42,7 @@ export default function GridView({ department, employees, allEmployees, weekOver
 
   const params = department.params;
   const color = department.color;
+  const eventLabel = (id?: string) => eventTypes.find(t => t.id === id)?.label ?? id ?? "";
 
   const weekDocId = `${department.id}_${weekIsoId(weekMonday)}`;
 
@@ -54,18 +57,21 @@ export default function GridView({ department, employees, allEmployees, weekOver
       m[d] = { ...params.store_hours[d] };
       // Participación: el depto solo entra en el evento si tiene curva definida para esa letra (algún valor > 0).
       const ev = events[d];
-      const lc = ev?.letter ? storeProfiles[ev.letter] : undefined;
+      const eid = ev?.eventId ?? (ev as { letter?: string } | undefined)?.letter; // compat datos viejos
+      const lc = eid ? storeProfiles[eid] : undefined;
       // Solo facturan billing/cajas: Cobertura no participa en el evento (ni cierre ampliado).
       const affected = (params.demand_mode ?? "billing") !== "cobertura" && !!(lc && Object.values(lc).some(v => Number(v) > 0));
-      if (ev?.letter && affected) {
-        m[d].special = ev.letter;
-        if (ev.close) m[d].close = ev.close;
+      if (eid && affected) {
+        m[d].special = eid;
+        const t = eventTypes.find(x => x.id === eid);
+        const closeVal = ev?.close || t?.close; // cierre del día o, si no, el del tipo
+        if (closeVal) m[d].close = closeVal;
       } else {
         delete m[d].special;
       }
     }
     return m;
-  }, [params, events, storeProfiles]);
+  }, [params, events, storeProfiles, eventTypes]);
 
   // Horario EFECTIVO = generado fusionado con ediciones manuales persistidas.
   // Cobertura recalculada solo en los días editados (el resto la conserva del solver).
@@ -218,8 +224,8 @@ export default function GridView({ department, employees, allEmployees, weekOver
             {DAYS_KEYS.map((d,i)=>(
               <div key={d} className={`day ${i===dayIdx?"active":""}`} onClick={()=>setDayIdx(i)}>
                 {DAY_SHORT[d]}
-                {events[d]?.letter&&<span className="matchbadge">Evento {events[d].letter}</span>}
-                <button onClick={e=>{e.stopPropagation();setEventModal({day:d,event:events[d]??{letter:"A"}});}} style={{background:"none",border:"none",cursor:"pointer",fontSize:10,color:"var(--ink-3)",marginLeft:2,padding:0}}>⚙</button>
+                {events[d]?.eventId&&<span className="matchbadge">{eventLabel(events[d].eventId)}</span>}
+                <button onClick={e=>{e.stopPropagation();setEventModal({day:d,event:events[d]??{eventId:""}});}} style={{background:"none",border:"none",cursor:"pointer",fontSize:10,color:"var(--ink-3)",marginLeft:2,padding:0}}>⚙</button>
               </div>
             ))}
           </div>
@@ -232,7 +238,7 @@ export default function GridView({ department, employees, allEmployees, weekOver
         </div>
         <div className="card">
           <div className="chead">
-            <h3>Cuadrante · {DAY_LABELS[DAYS_KEYS[dayIdx]]}{events[DAYS_KEYS[dayIdx]]?.letter?` · Evento ${events[DAYS_KEYS[dayIdx]].letter}`:""}</h3>
+            <h3>Cuadrante · {DAY_LABELS[DAYS_KEYS[dayIdx]]}{events[DAYS_KEYS[dayIdx]]?.eventId?` · ${eventLabel(events[DAYS_KEYS[dayIdx]].eventId)}`:""}</h3>
             <span className="sub">desde apertura − montaje</span>
           </div>
           {displaySchedule ? (
@@ -246,7 +252,7 @@ export default function GridView({ department, employees, allEmployees, weekOver
       {!selectedEmp && mode==="semana" && (<div>
         {displaySchedule ? DAYS_KEYS.map(d=>(
           <div key={d} className="dayblock">
-            <h5>{DAY_LABELS[d]} {events[d]?.letter&&<span className="dbtag match">Evento {events[d].letter}</span>}</h5>
+            <h5>{DAY_LABELS[d]} {events[d]?.eventId&&<span className="dbtag match">{eventLabel(events[d].eventId)}</span>}</h5>
             <div className="gscroll"><DayGrid day={d} params={params} storeHours={mergedStoreHours} storeBilling={storeBilling} storeProfiles={storeProfiles} employees={employees} allEmployees={allEmployees} inactiveIds={inactiveIds} weekOverrides={weekOverrides} schedule={displaySchedule} scheduleEdits={scheduleEdits} color={color} onManualEdit={handleManualEdit} onSetOff={handleSetDayOff}/></div>
           </div>
         )) : <div className="card cardpad" style={{textAlign:"center",color:"var(--ink-3)",padding:40}}>Pulsa <b>Generar</b></div>}
@@ -355,26 +361,58 @@ export default function GridView({ department, employees, allEmployees, weekOver
         </div>
       )}
 
-      {eventModal && <EventModal event={eventModal.event} day={eventModal.day} onSave={ev=>addEvent(eventModal.day,ev)} onRemove={()=>removeEvent(eventModal.day)} onClose={()=>setEventModal(null)} hasEvent={!!events[eventModal.day]}/>}
+      {eventModal && <EventModal event={eventModal.event} day={eventModal.day} eventTypes={eventTypes} onSaveEventTypes={onSaveEventTypes} onSave={ev=>addEvent(eventModal.day,ev)} onRemove={()=>removeEvent(eventModal.day)} onClose={()=>setEventModal(null)} hasEvent={!!events[eventModal.day]}/>}
     </>
   );
 }
 
 /* Event Modal (unchanged) */
-function EventModal({event,day,onSave,onRemove,onClose,hasEvent}:{event:WeekEvent;day:DayKey;onSave:(e:WeekEvent)=>void;onRemove:()=>void;onClose:()=>void;hasEvent:boolean}) {
-  const [ev,setEv]=useState<WeekEvent>(event);
-  return <div className="modal-overlay" onClick={onClose}><div className="modal" onClick={e=>e.stopPropagation()} style={{width:400}}>
+function nextEventId(types:EventType[]):string {
+  const used=new Set(types.map(t=>t.id));
+  for(let i=0;i<26;i++){const L=String.fromCharCode(65+i);if(!used.has(L))return L;}
+  return `ev${Date.now()}`;
+}
+
+function EventModal({event,day,eventTypes,onSaveEventTypes,onSave,onRemove,onClose,hasEvent}:{event:WeekEvent;day:DayKey;eventTypes:EventType[];onSaveEventTypes:(t:EventType[])=>void;onSave:(e:WeekEvent)=>void;onRemove:()=>void;onClose:()=>void;hasEvent:boolean}) {
+  const [ev,setEv]=useState<WeekEvent>(()=>({eventId:event.eventId ?? (event as {letter?:string}).letter ?? "",close:event.close}));
+  const [newLabel,setNewLabel]=useState("");
+  const [newClose,setNewClose]=useState("");
+
+  function pick(t:EventType){ setEv(prev=>({eventId:t.id, close: prev.close || t.close || ""})); }
+  function renameType(id:string,label:string){ onSaveEventTypes(eventTypes.map(t=>t.id===id?{...t,label}:t)); }
+  function setTypeClose(id:string,close:string){ onSaveEventTypes(eventTypes.map(t=>t.id===id?{...t,close:close||undefined}:t)); }
+  function delType(id:string){ onSaveEventTypes(eventTypes.filter(t=>t.id!==id)); if(ev.eventId===id) setEv({eventId:"",close:ev.close}); }
+  function addType(){ const label=newLabel.trim(); if(!label) return; const id=nextEventId(eventTypes); onSaveEventTypes([...eventTypes,{id,label,...(newClose?{close:newClose}:{})}]); setNewLabel(""); setNewClose(""); }
+
+  return <div className="modal-overlay" onClick={onClose}><div className="modal" onClick={e=>e.stopPropagation()} style={{width:430}}>
     <div className="modal-head"><h3>Evento — {DAY_LABELS[day]}</h3><button className="editbtn" onClick={onClose} style={{background:"transparent"}}>✕</button></div>
     <div className="modal-body">
-      <div className="form-field"><label>Letra del evento</label><div style={{display:"flex",gap:8}}>
-        {["A","B","C","D","E"].map(L=>(
-          <button key={L} className={`prof ${ev.letter===L?"active":""}`} onClick={()=>setEv({...ev,letter:L})}>{L}</button>
+      <div className="form-field"><label>Evento del día</label><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        {eventTypes.length===0 && <span style={{fontSize:11,color:"var(--ink-3)"}}>No hay eventos. Crea uno abajo.</span>}
+        {eventTypes.map(t=>(
+          <button key={t.id} className={`prof ${ev.eventId===t.id?"active":""}`} onClick={()=>pick(t)}>{t.label}</button>
         ))}
       </div></div>
       <div className="form-field"><label>Cierre ampliado (opcional)</label><input className="timeinput" value={ev.close??""} onChange={e=>setEv({...ev,close:e.target.value})}/>
-        <span style={{fontSize:10,color:"var(--ink-3)",marginTop:2,display:"block"}}>déjalo vacío si no amplía horario</span></div>
+        <span style={{fontSize:10,color:"var(--ink-3)",marginTop:2,display:"block"}}>vacío = usa el del evento o no amplía</span></div>
+
+      <div className="form-field" style={{borderTop:"1px solid var(--line)",paddingTop:12,marginTop:4}}>
+        <label>Eventos de la tienda</label>
+        {eventTypes.map(t=>(
+          <div key={t.id} style={{display:"flex",gap:6,alignItems:"center",marginBottom:6}}>
+            <input className="form-input" style={{flex:1}} value={t.label} onChange={e=>renameType(t.id,e.target.value)} placeholder="Nombre"/>
+            <input className="timeinput" style={{width:64}} value={t.close??""} onChange={e=>setTypeClose(t.id,e.target.value)} placeholder="cierre"/>
+            <button className="editbtn" title="Borrar del catálogo" style={{color:"var(--bad)"}} onClick={()=>delType(t.id)}>✕</button>
+          </div>
+        ))}
+        <div style={{display:"flex",gap:6,alignItems:"center",marginTop:8}}>
+          <input className="form-input" style={{flex:1}} value={newLabel} onChange={e=>setNewLabel(e.target.value)} placeholder="Nuevo evento"/>
+          <input className="timeinput" style={{width:64}} value={newClose} onChange={e=>setNewClose(e.target.value)} placeholder="cierre"/>
+          <button className="btn btn-ghost" style={{fontSize:11}} onClick={addType}>＋ Añadir</button>
+        </div>
+      </div>
     </div>
-    <div className="modal-foot">{hasEvent&&<button className="btn-danger" onClick={onRemove}>Quitar evento</button>}<div className="spacer"/><button className="btn btn-ghost" onClick={onClose}>Cancelar</button><button className="btn btn-go" onClick={()=>onSave(ev)}>Guardar</button></div>
+    <div className="modal-foot">{hasEvent&&<button className="btn-danger" onClick={onRemove}>Quitar evento</button>}<div className="spacer"/><button className="btn btn-ghost" onClick={onClose}>Cancelar</button><button className="btn btn-go" onClick={()=>ev.eventId?onSave({eventId:ev.eventId,...(ev.close?{close:ev.close}:{})}):onRemove()}>Guardar</button></div>
   </div></div>;
 }
 

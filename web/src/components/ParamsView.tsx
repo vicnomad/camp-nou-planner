@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import type { Department, DepartmentParams, BillingProfile, DemandMode, CoverageBand } from "@/lib/types";
+import type { Department, DepartmentParams, BillingProfile, DemandMode, CoverageBand, EventType } from "@/lib/types";
 import { DAYS_KEYS, DAY_LABELS } from "@/lib/types";
 
 interface Props {
@@ -9,9 +9,10 @@ interface Props {
   onUpdateParams: (params: DepartmentParams) => void;
   storeProfiles: Record<string, BillingProfile>;
   onSaveStoreProfiles: (profiles: Record<string, BillingProfile>) => void;
+  eventTypes: EventType[];
 }
 
-export default function ParamsView({ department, onUpdateParams, storeProfiles, onSaveStoreProfiles }: Props) {
+export default function ParamsView({ department, onUpdateParams, storeProfiles, onSaveStoreProfiles, eventTypes }: Props) {
   const [params, setParams] = useState<DepartmentParams>(department.params);
   const [profile, setProfile] = useState<string>("normal");
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -320,8 +321,8 @@ export default function ParamsView({ department, onUpdateParams, storeProfiles, 
               <label>Curva horaria <span className="hint">(% de venta por franja — nivel tienda)</span></label>
               <div className="profiles">
                 <button className={`prof ${profile==="normal"?"active":""}`} onClick={()=>setProfile("normal")}>Normal</button>
-                {["A","B","C","D","E"].map(L=>(
-                  <button key={L} className={`prof ${profile===L?"active":""}`} onClick={()=>setProfile(L)}>{L}</button>
+                {eventTypes.map(t=>(
+                  <button key={t.id} className={`prof ${profile===t.id?"active":""}`} onClick={()=>setProfile(t.id)}>{t.label}</button>
                 ))}
                 <span className="pctsum" style={{color:Math.abs(pctSum-100)<=2?"var(--ok)":"var(--bad)"}}>Σ {pctSum}%</span>
               </div>
