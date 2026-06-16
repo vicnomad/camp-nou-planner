@@ -13,7 +13,7 @@ import type { WeekOverride } from "@/app/page";
 
 const SOLVER_URL = process.env.NEXT_PUBLIC_SOLVER_URL || "https://camp-nou-engine.vercel.app";
 
-interface WeekEvent { type: "match" | "inventory"; close?: string; extra?: { from: string; to: string; min: number; max: number }; }
+interface WeekEvent { letter: string; close?: string; }
 
 interface Props {
   department: Department; employees: Employee[]; allEmployees: Employee[];
@@ -42,22 +42,28 @@ export default function GridView({ department, employees, allEmployees, weekOver
 
   const weekDocId = `${department.id}_${weekIsoId(weekMonday)}`;
 
-  // Load week events
+  // Load store events (nivel TIENDA, por semana — compartidos por todos los departamentos)
   useEffect(() => {
-    getDoc(doc(db,"weeks",weekDocId)).then(s => { if(s.exists()) setEvents(s.data().events??{}); else setEvents({}); });
-  }, [weekDocId]);
+    getDoc(doc(db,"storeEvents",weekIsoId(weekMonday))).then(s => { if(s.exists()) setEvents(s.data().events??{}); else setEvents({}); });
+  }, [weekMonday]);
 
   const mergedStoreHours = useMemo(() => {
     const m: Record<string,StoreHours> = {};
     for (const d of DAYS_KEYS) {
       m[d] = { ...params.store_hours[d] };
+      // Participación: el depto solo entra en el evento si tiene curva definida para esa letra (algún valor > 0).
       const ev = events[d];
-      if (ev?.type==="match") { m[d].special="match"; if(ev.close) m[d].close=ev.close; }
-      else if (ev?.type==="inventory") { m[d].special="inventory"; if(ev.extra) m[d].extra=ev.extra; }
-      else { delete m[d].special; delete m[d].extra; }
+      const lc = ev?.letter ? params.billing?.profiles?.[ev.letter] : undefined;
+      const affected = !!(lc && Object.values(lc).some(v => Number(v) > 0));
+      if (ev?.letter && affected) {
+        m[d].special = ev.letter;
+        if (ev.close) m[d].close = ev.close;
+      } else {
+        delete m[d].special;
+      }
     }
     return m;
-  }, [params.store_hours, events]);
+  }, [params, events]);
 
   // Horario EFECTIVO = generado fusionado con ediciones manuales persistidas.
   // Cobertura recalculada solo en los días editados (el resto la conserva del solver).
@@ -71,7 +77,7 @@ export default function GridView({ department, employees, allEmployees, weekOver
     return { ...merged, coverage };
   }, [schedule, scheduleEdits, employees, params, mergedStoreHours, storeBilling]);
 
-  async function saveEvents(ne: Record<string,WeekEvent>) { setEvents(ne); await setDoc(doc(db,"weeks",weekDocId),{events:ne},{merge:true}); }
+  async function saveEvents(ne: Record<string,WeekEvent>) { setEvents(ne); await setDoc(doc(db,"storeEvents",weekIsoId(weekMonday)),{events:ne},{merge:true}); }
   function addEvent(day:DayKey,ev:WeekEvent) { saveEvents({...events,[day]:ev}); setEventModal(null); showToast(`Evento añadido al ${DAY_LABELS[day]}`); }
   function removeEvent(day:DayKey) { const n={...events}; delete n[day]; saveEvents(n); setEventModal(null); }
 
@@ -103,7 +109,7 @@ export default function GridView({ department, employees, allEmployees, weekOver
           const sh2 = mergedStoreHours[d];
           if (!sh2) continue;
           const dayBill = storeBilling[d] ?? 0;
-          const profName = sh2.special === "match" ? "match" : "normal";
+          const profName = (sh2.special && params.billing?.profiles?.[sh2.special]) ? sh2.special : "normal";
           const prof = params.billing?.profiles?.[profName] ?? {};
           const bands: { from: string; to: string; min: number; max: number }[] = [];
           for (const [hrS, pct] of Object.entries(prof).sort(([a],[b]) => +a - +b)) {
@@ -208,9 +214,8 @@ export default function GridView({ department, employees, allEmployees, weekOver
             {DAYS_KEYS.map((d,i)=>(
               <div key={d} className={`day ${i===dayIdx?"active":""}`} onClick={()=>setDayIdx(i)}>
                 {DAY_SHORT[d]}
-                {events[d]?.type==="match"&&<span className="matchbadge">Partido</span>}
-                {events[d]?.type==="inventory"&&<span className="matchbadge" style={{background:"#e7e0fb",color:"#5b32b0"}}>Invent.</span>}
-                <button onClick={e=>{e.stopPropagation();setEventModal({day:d,event:events[d]??{type:"match"}});}} style={{background:"none",border:"none",cursor:"pointer",fontSize:10,color:"var(--ink-3)",marginLeft:2,padding:0}}>⚙</button>
+                {events[d]?.letter&&<span className="matchbadge">Evento {events[d].letter}</span>}
+                <button onClick={e=>{e.stopPropagation();setEventModal({day:d,event:events[d]??{letter:"A"}});}} style={{background:"none",border:"none",cursor:"pointer",fontSize:10,color:"var(--ink-3)",marginLeft:2,padding:0}}>⚙</button>
               </div>
             ))}
           </div>
@@ -223,7 +228,7 @@ export default function GridView({ department, employees, allEmployees, weekOver
         </div>
         <div className="card">
           <div className="chead">
-            <h3>Cuadrante · {DAY_LABELS[DAYS_KEYS[dayIdx]]}{events[DAYS_KEYS[dayIdx]]?.type==="match"?" · Partido":events[DAYS_KEYS[dayIdx]]?.type==="inventory"?" · Inventario":""}</h3>
+            <h3>Cuadrante · {DAY_LABELS[DAYS_KEYS[dayIdx]]}{events[DAYS_KEYS[dayIdx]]?.letter?` · Evento ${events[DAYS_KEYS[dayIdx]].letter}`:""}</h3>
             <span className="sub">desde apertura − montaje</span>
           </div>
           {displaySchedule ? (
@@ -237,7 +242,7 @@ export default function GridView({ department, employees, allEmployees, weekOver
       {!selectedEmp && mode==="semana" && (<div>
         {displaySchedule ? DAYS_KEYS.map(d=>(
           <div key={d} className="dayblock">
-            <h5>{DAY_LABELS[d]} {events[d]?.type==="match"&&<span className="dbtag match">Partido</span>}{events[d]?.type==="inventory"&&<span className="dbtag inv">Inventario</span>}</h5>
+            <h5>{DAY_LABELS[d]} {events[d]?.letter&&<span className="dbtag match">Evento {events[d].letter}</span>}</h5>
             <div className="gscroll"><DayGrid day={d} params={params} storeHours={mergedStoreHours} storeBilling={storeBilling} employees={employees} allEmployees={allEmployees} inactiveIds={inactiveIds} weekOverrides={weekOverrides} schedule={displaySchedule} scheduleEdits={scheduleEdits} color={color} onManualEdit={handleManualEdit} onSetOff={handleSetDayOff}/></div>
           </div>
         )) : <div className="card cardpad" style={{textAlign:"center",color:"var(--ink-3)",padding:40}}>Pulsa <b>Generar</b></div>}
@@ -357,12 +362,13 @@ function EventModal({event,day,onSave,onRemove,onClose,hasEvent}:{event:WeekEven
   return <div className="modal-overlay" onClick={onClose}><div className="modal" onClick={e=>e.stopPropagation()} style={{width:400}}>
     <div className="modal-head"><h3>Evento — {DAY_LABELS[day]}</h3><button className="editbtn" onClick={onClose} style={{background:"transparent"}}>✕</button></div>
     <div className="modal-body">
-      <div className="form-field"><label>Tipo</label><div style={{display:"flex",gap:8}}>
-        <button className={`prof ${ev.type==="match"?"active":""}`} onClick={()=>setEv({...ev,type:"match"})}>Partido ⚽</button>
-        <button className={`prof ${ev.type==="inventory"?"active":""}`} onClick={()=>setEv({...ev,type:"inventory"})}>Inventario 📦</button>
+      <div className="form-field"><label>Letra del evento</label><div style={{display:"flex",gap:8}}>
+        {["A","B","C","D","E"].map(L=>(
+          <button key={L} className={`prof ${ev.letter===L?"active":""}`} onClick={()=>setEv({...ev,letter:L})}>{L}</button>
+        ))}
       </div></div>
-      {ev.type==="match"&&<div className="form-field"><label>Cierre ampliado</label><input className="timeinput" value={ev.close??"23:00"} onChange={e=>setEv({...ev,close:e.target.value})}/></div>}
-      {ev.type==="inventory"&&<><div style={{display:"flex",gap:10}}><div className="form-field" style={{flex:1}}><label>Desde</label><input className="timeinput" value={ev.extra?.from??"21:00"} onChange={e=>setEv({...ev,extra:{...(ev.extra??{from:"21:00",to:"01:00",min:2,max:3}),from:e.target.value}})}/></div><div className="form-field" style={{flex:1}}><label>Hasta</label><input className="timeinput" value={ev.extra?.to??"01:00"} onChange={e=>setEv({...ev,extra:{...(ev.extra??{from:"21:00",to:"01:00",min:2,max:3}),to:e.target.value}})}/></div></div><div style={{display:"flex",gap:10}}><div className="form-field" style={{flex:1}}><label>Mín</label><input className="num" type="number" value={ev.extra?.min??2} onChange={e=>setEv({...ev,extra:{...(ev.extra??{from:"21:00",to:"01:00",min:2,max:3}),min:+e.target.value}})}/></div><div className="form-field" style={{flex:1}}><label>Máx</label><input className="num" type="number" value={ev.extra?.max??3} onChange={e=>setEv({...ev,extra:{...(ev.extra??{from:"21:00",to:"01:00",min:2,max:3}),max:+e.target.value}})}/></div></div></>}
+      <div className="form-field"><label>Cierre ampliado (opcional)</label><input className="timeinput" value={ev.close??""} onChange={e=>setEv({...ev,close:e.target.value})}/>
+        <span style={{fontSize:10,color:"var(--ink-3)",marginTop:2,display:"block"}}>déjalo vacío si no amplía horario</span></div>
     </div>
     <div className="modal-foot">{hasEvent&&<button className="btn-danger" onClick={onRemove}>Quitar evento</button>}<div className="spacer"/><button className="btn btn-ghost" onClick={onClose}>Cancelar</button><button className="btn btn-go" onClick={()=>onSave(ev)}>Guardar</button></div>
   </div></div>;
@@ -375,7 +381,8 @@ function computeTargetMap(day:DayKey,params:Department["params"],sh:StoreHours,s
   const openM=tm(sh.open); const cr=tm(sh.close); const closeM=cr<=openM?cr+1440:cr;
   const mode=params.demand_mode??"billing";
   const billing=params.billing;
-  const prof=billing?.profiles?.[sh.special==="match"?"match":"normal"]??{};
+  const pn=(sh.special && billing?.profiles?.[sh.special])?sh.special:"normal";
+  const prof=billing?.profiles?.[pn]??{};
   if(mode==="cobertura"){
     const bands=params.coverage_bands??[];
     for(let m=openM;m<closeM;m+=30){
