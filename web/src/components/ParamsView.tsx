@@ -91,9 +91,22 @@ export default function ParamsView({ department, onUpdateParams }: Props) {
   const demandMode = params.demand_mode ?? "billing";
 
   const currentProfile: BillingProfile = params.billing?.profiles?.[profile] ?? {};
-  const profileHours = Object.keys(currentProfile)
-    .map(Number)
-    .sort((a, b) => a - b);
+  const profileHours = useMemo(() => {
+    const sh = params.store_hours ?? {};
+    const opens = Object.values(sh).map(s => parseInt(s?.open ?? "10", 10)).filter(n => !isNaN(n));
+    const closes = Object.values(sh).map(s => parseInt(s?.close ?? "20", 10)).filter(n => !isNaN(n));
+    let lo = opens.length ? Math.min(...opens) : 10;
+    let hi = Math.max(closes.length ? Math.max(...closes) : 20, 24); // hasta medianoche para eventos
+    for (const pf of Object.values(params.billing?.profiles ?? {})) {
+      for (const k of Object.keys(pf)) {
+        const h = parseInt(k, 10);
+        if (!isNaN(h)) { if (h < lo) lo = h; if (h + 1 > hi) hi = h + 1; }
+      }
+    }
+    const arr: number[] = [];
+    for (let h = lo; h < hi; h++) arr.push(h);
+    return arr;
+  }, [params.store_hours, params.billing?.profiles]);
   const pctSum = Object.values(currentProfile).reduce(
     (s: number, v: number) => s + v,
     0
