@@ -11,11 +11,24 @@ interface Props {
 
 export default function ParamsView({ department, onUpdateParams }: Props) {
   const [params, setParams] = useState<DepartmentParams>(department.params);
-  const [profile, setProfile] = useState<"normal" | "match">("normal");
+  const [profile, setProfile] = useState<string>("normal");
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setParams(department.params);
+  }, [department]);
+
+  // Migración suave: si hay curva de "Partido" (match) y aún no existe "A", inicializa "A" copiándola.
+  // (Una vez por departamento; no borra "match".)
+  useEffect(() => {
+    const prof = department.params.billing?.profiles;
+    if (prof?.match && !prof.A) {
+      update((p) => ({
+        ...p,
+        billing: { ...p.billing, profiles: { ...p.billing.profiles, A: { ...prof.match } } },
+      }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [department]);
 
   const autosave = useCallback(
@@ -310,7 +323,9 @@ export default function ParamsView({ department, onUpdateParams }: Props) {
               <label>Curva horaria <span className="hint">(% de venta por franja — nivel tienda)</span></label>
               <div className="profiles">
                 <button className={`prof ${profile==="normal"?"active":""}`} onClick={()=>setProfile("normal")}>Normal</button>
-                <button className={`prof ${profile==="match"?"active":""}`} onClick={()=>setProfile("match")}>Partido ⚽</button>
+                {["A","B","C","D","E"].map(L=>(
+                  <button key={L} className={`prof ${profile===L?"active":""}`} onClick={()=>setProfile(L)}>{L}</button>
+                ))}
                 <span className="pctsum" style={{color:Math.abs(pctSum-100)<=2?"var(--ok)":"var(--bad)"}}>Σ {pctSum}%</span>
               </div>
               <div className="pctgrid">{profileHours.map(hr=>(<div key={hr} className="pctchip"><span>{hr}h</span><input type="number" value={currentProfile[String(hr)]??0} onChange={e=>setProfilePct(String(hr),+e.target.value||0)}/><i>%</i></div>))}</div>
