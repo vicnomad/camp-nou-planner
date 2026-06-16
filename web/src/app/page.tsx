@@ -6,7 +6,7 @@ import { onAuthStateChanged, signInWithEmailAndPassword, type User } from "fireb
 import {
   collection, onSnapshot, query, where, doc, updateDoc, getDoc, setDoc, deleteDoc,
 } from "firebase/firestore";
-import type { Department, Employee, SolveResult, Absence } from "@/lib/types";
+import type { Department, Employee, SolveResult, Absence, BillingProfile } from "@/lib/types";
 import { DAYS_KEYS } from "@/lib/types";
 import { getMonday, fmtDate, weekIsoId, isoWeekNumber, weekLabel, shiftWeek } from "@/lib/week";
 import { exportCegidXlsx } from "@/lib/exportCegid";
@@ -43,6 +43,8 @@ export default function Home() {
   const [weekOverrides, setWeekOverrides] = useState<Record<string, WeekOverride>>({});
   const [scheduleEdits, setScheduleEdits] = useState<ScheduleEdits>({});
   const [storeBilling, setStoreBilling] = useState<Record<string, number>>({});
+  // Curvas horarias a nivel TIENDA (Normal + A–E), compartidas por todos los departamentos.
+  const [storeProfiles, setStoreProfiles] = useState<Record<string, BillingProfile>>({});
   const generateRef = useRef<(() => void) | null>(null);
 
   // Puerta de acceso (Firebase Auth, sesión persistida).
@@ -89,6 +91,32 @@ export default function Home() {
     });
     return unsub;
   }, [currentDeptId, authUser]);
+
+  // Load store-level hourly curves (Normal + A–E), shared by all departments. Once, no per-week.
+  const [seedNeeded, setSeedNeeded] = useState(false);
+  useEffect(() => {
+    if (!authUser) return;
+    getDoc(doc(db, "storeProfiles", "default")).then((snap) => {
+      if (snap.exists()) setStoreProfiles((snap.data().profiles as Record<string, BillingProfile>) ?? {});
+      else setSeedNeeded(true); // doc nuevo: sembrar desde el primer departamento
+    });
+  }, [authUser]);
+  // Migración: si no existía el doc de tienda, siémbralo una vez con las curvas del primer depto.
+  useEffect(() => {
+    if (!seedNeeded) return;
+    const seed = departments[0]?.params?.billing?.profiles;
+    if (seed && Object.keys(seed).length > 0) {
+      setStoreProfiles(seed);
+      setDoc(doc(db, "storeProfiles", "default"), { profiles: seed });
+      setSeedNeeded(false);
+    }
+  }, [seedNeeded, departments]);
+
+  const saveStoreProfiles = useCallback(async (profiles: Record<string, BillingProfile>) => {
+    setStoreProfiles(profiles);
+    if (!authUser) return;
+    await setDoc(doc(db, "storeProfiles", "default"), { profiles });
+  }, [authUser]);
 
   // Load saved schedule + overrides when dept or week changes
   const weekDocId = currentDeptId ? `${currentDeptId}_${weekIsoId(weekMonday)}` : null;
@@ -238,7 +266,7 @@ export default function Home() {
               schedule={schedule} onSchedule={setSchedule}
               scheduleEdits={scheduleEdits} onScheduleEditsChange={setScheduleEdits}
               showToast={showToast} generateRef={generateRef}
-              weekMonday={weekMonday} storeBilling={storeBilling}
+              weekMonday={weekMonday} storeBilling={storeBilling} storeProfiles={storeProfiles}
             />
           )}
           {view === "team" && currentDept && (
@@ -250,7 +278,8 @@ export default function Home() {
             />
           )}
           {view === "params" && currentDept && (
-            <ParamsView department={currentDept} onUpdateParams={updateParams} />
+            <ParamsView department={currentDept} onUpdateParams={updateParams}
+              storeProfiles={storeProfiles} onSaveStoreProfiles={saveStoreProfiles} />
           )}
           {view === "billing" && (
             <BillingView departments={departments} weekMonday={weekMonday} showToast={showToast}

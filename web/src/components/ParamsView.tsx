@@ -7,28 +7,17 @@ import { DAYS_KEYS, DAY_LABELS } from "@/lib/types";
 interface Props {
   department: Department;
   onUpdateParams: (params: DepartmentParams) => void;
+  storeProfiles: Record<string, BillingProfile>;
+  onSaveStoreProfiles: (profiles: Record<string, BillingProfile>) => void;
 }
 
-export default function ParamsView({ department, onUpdateParams }: Props) {
+export default function ParamsView({ department, onUpdateParams, storeProfiles, onSaveStoreProfiles }: Props) {
   const [params, setParams] = useState<DepartmentParams>(department.params);
   const [profile, setProfile] = useState<string>("normal");
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setParams(department.params);
-  }, [department]);
-
-  // Migración suave: si hay curva de "Partido" (match) y aún no existe "A", inicializa "A" copiándola.
-  // (Una vez por departamento; no borra "match".)
-  useEffect(() => {
-    const prof = department.params.billing?.profiles;
-    if (prof?.match && !prof.A) {
-      update((p) => ({
-        ...p,
-        billing: { ...p.billing, profiles: { ...p.billing.profiles, A: { ...prof.match } } },
-      }));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [department]);
 
   const autosave = useCallback(
@@ -68,17 +57,12 @@ export default function ParamsView({ department, onUpdateParams }: Props) {
     }));
   }
 
+  // Las curvas son a nivel TIENDA: se editan en el doc compartido (no en el departamento).
   function setProfilePct(hour: string, val: number) {
-    update((p) => ({
-      ...p,
-      billing: {
-        ...p.billing,
-        profiles: {
-          ...p.billing.profiles,
-          [profile]: { ...p.billing.profiles[profile], [hour]: val },
-        },
-      },
-    }));
+    onSaveStoreProfiles({
+      ...storeProfiles,
+      [profile]: { ...(storeProfiles[profile] ?? {}), [hour]: val },
+    });
   }
 
   function setProductivity(val: number) {
@@ -90,14 +74,14 @@ export default function ParamsView({ department, onUpdateParams }: Props) {
 
   const demandMode = params.demand_mode ?? "billing";
 
-  const currentProfile: BillingProfile = params.billing?.profiles?.[profile] ?? {};
+  const currentProfile: BillingProfile = storeProfiles[profile] ?? {};
   const profileHours = useMemo(() => {
     const sh = params.store_hours ?? {};
     const opens = Object.values(sh).map(s => parseInt(s?.open ?? "10", 10)).filter(n => !isNaN(n));
     const closes = Object.values(sh).map(s => parseInt(s?.close ?? "20", 10)).filter(n => !isNaN(n));
     let lo = opens.length ? Math.min(...opens) : 10;
     let hi = Math.max(closes.length ? Math.max(...closes) : 20, 24); // hasta medianoche para eventos
-    for (const pf of Object.values(params.billing?.profiles ?? {})) {
+    for (const pf of Object.values(storeProfiles)) {
       for (const k of Object.keys(pf)) {
         const h = parseInt(k, 10);
         if (!isNaN(h)) { if (h < lo) lo = h; if (h + 1 > hi) hi = h + 1; }
@@ -106,7 +90,7 @@ export default function ParamsView({ department, onUpdateParams }: Props) {
     const arr: number[] = [];
     for (let h = lo; h < hi; h++) arr.push(h);
     return arr;
-  }, [params.store_hours, params.billing?.profiles]);
+  }, [params.store_hours, storeProfiles]);
   const pctSum = Object.values(currentProfile).reduce(
     (s: number, v: number) => s + v,
     0

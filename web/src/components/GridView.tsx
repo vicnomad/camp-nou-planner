@@ -3,7 +3,7 @@
 import { useState, useCallback, useMemo, useEffect, useRef, type MutableRefObject } from "react";
 import { db } from "@/lib/firebase";
 import { doc, setDoc, getDoc, deleteDoc } from "firebase/firestore";
-import type { Department, Employee, SolveResult, ScheduleEntry, CoverageSlot, DayKey, StoreHours } from "@/lib/types";
+import type { Department, Employee, SolveResult, ScheduleEntry, CoverageSlot, DayKey, StoreHours, BillingProfile } from "@/lib/types";
 import { DAYS_KEYS, DAY_LABELS, DAY_SHORT } from "@/lib/types";
 import { weekLabel, weekIsoId } from "@/lib/week";
 import { weekComplSplit } from "@/lib/weekCompl";
@@ -23,13 +23,14 @@ interface Props {
   showToast: (msg: string) => void; generateRef: MutableRefObject<(() => void) | null>;
   weekMonday: string;
   storeBilling: Record<string, number>;
+  storeProfiles: Record<string, BillingProfile>;
 }
 
 function hh(m: number) { const x=((m%1440)+1440)%1440; return String(Math.floor(x/60)).padStart(2,"0")+":"+String(x%60).padStart(2,"0"); }
 function tm(t: string) { const [h,m]=t.split(":").map(Number); return h*60+m; }
 function initials(name: string) { return name.split(",")[0].slice(0,2).toUpperCase(); }
 
-export default function GridView({ department, employees, allEmployees, weekOverrides, schedule, onSchedule, scheduleEdits, onScheduleEditsChange, showToast, generateRef, weekMonday, storeBilling }: Props) {
+export default function GridView({ department, employees, allEmployees, weekOverrides, schedule, onSchedule, scheduleEdits, onScheduleEditsChange, showToast, generateRef, weekMonday, storeBilling, storeProfiles }: Props) {
   const [mode, setMode] = useState<"dia"|"semana">("dia");
   const [dayIdx, setDayIdx] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -53,8 +54,9 @@ export default function GridView({ department, employees, allEmployees, weekOver
       m[d] = { ...params.store_hours[d] };
       // Participación: el depto solo entra en el evento si tiene curva definida para esa letra (algún valor > 0).
       const ev = events[d];
-      const lc = ev?.letter ? params.billing?.profiles?.[ev.letter] : undefined;
-      const affected = !!(lc && Object.values(lc).some(v => Number(v) > 0));
+      const lc = ev?.letter ? storeProfiles[ev.letter] : undefined;
+      // Solo facturan billing/cajas: Cobertura no participa en el evento (ni cierre ampliado).
+      const affected = (params.demand_mode ?? "billing") !== "cobertura" && !!(lc && Object.values(lc).some(v => Number(v) > 0));
       if (ev?.letter && affected) {
         m[d].special = ev.letter;
         if (ev.close) m[d].close = ev.close;
@@ -63,7 +65,7 @@ export default function GridView({ department, employees, allEmployees, weekOver
       }
     }
     return m;
-  }, [params, events]);
+  }, [params, events, storeProfiles]);
 
   // Horario EFECTIVO = generado fusionado con ediciones manuales persistidas.
   // Cobertura recalculada solo en los días editados (el resto la conserva del solver).
@@ -73,9 +75,9 @@ export default function GridView({ department, employees, allEmployees, weekOver
     const days = editedDays(scheduleEdits);
     if (days.size === 0) return merged;
     const coverage = { ...merged.coverage };
-    for (const d of days) coverage[d] = recalcCoverage(d, merged, employees, params, mergedStoreHours, storeBilling);
+    for (const d of days) coverage[d] = recalcCoverage(d, merged, employees, params, mergedStoreHours, storeBilling, storeProfiles);
     return { ...merged, coverage };
-  }, [schedule, scheduleEdits, employees, params, mergedStoreHours, storeBilling]);
+  }, [schedule, scheduleEdits, employees, params, mergedStoreHours, storeBilling, storeProfiles]);
 
   async function saveEvents(ne: Record<string,WeekEvent>) { setEvents(ne); await setDoc(doc(db,"storeEvents",weekIsoId(weekMonday)),{events:ne},{merge:true}); }
   function addEvent(day:DayKey,ev:WeekEvent) { saveEvents({...events,[day]:ev}); setEventModal(null); showToast(`Evento añadido al ${DAY_LABELS[day]}`); }
@@ -93,13 +95,15 @@ export default function GridView({ department, employees, allEmployees, weekOver
       // Build solver params based on demand mode
       const mode2 = params.demand_mode ?? "billing";
       const solverParams: Record<string, unknown> = { ...params, store_hours: mergedStoreHours };
+      // Curvas a nivel TIENDA: el motor elige por special; mandamos las curvas compartidas.
+      const billingBase = { ...params.billing, profiles: storeProfiles };
 
       if (mode2 === "billing") {
         // Apply billing_pct to store billing → dept billing
         const pct = (params.billing_pct ?? 100) / 100;
         const deptDaily: Record<string, number> = {};
         for (const d of DAYS_KEYS) deptDaily[d] = Math.round((storeBilling[d] ?? 0) * pct);
-        solverParams.billing = { ...params.billing, daily: deptDaily };
+        solverParams.billing = { ...billingBase, daily: deptDaily };
       } else if (mode2 === "cajas") {
         // Cajas: compute demand_curve from billing × profile / ticket / clients_per_cash
         const ticket = params.ticket_medio ?? 25;
@@ -109,8 +113,8 @@ export default function GridView({ department, employees, allEmployees, weekOver
           const sh2 = mergedStoreHours[d];
           if (!sh2) continue;
           const dayBill = storeBilling[d] ?? 0;
-          const profName = (sh2.special && params.billing?.profiles?.[sh2.special]) ? sh2.special : "normal";
-          const prof = params.billing?.profiles?.[profName] ?? {};
+          const profName = (sh2.special && storeProfiles[sh2.special]) ? sh2.special : "normal";
+          const prof = storeProfiles[profName] ?? {};
           const bands: { from: string; to: string; min: number; max: number }[] = [];
           for (const [hrS, pct] of Object.entries(prof).sort(([a],[b]) => +a - +b)) {
             const hr = +hrS;
@@ -122,14 +126,14 @@ export default function GridView({ department, employees, allEmployees, weekOver
           curve[d] = bands;
         }
         solverParams.demand_curve = curve;
-        solverParams.billing = { ...params.billing, daily: Object.fromEntries(DAYS_KEYS.map(d => [d, 0])) };
+        solverParams.billing = { ...billingBase, daily: Object.fromEntries(DAYS_KEYS.map(d => [d, 0])) };
       } else if (mode2 === "cobertura") {
         // Coverage mode: send demand_curve, zero out billing
         const curve: Record<string, { from: string; to: string; min: number; max: number }[]> = {};
         const bands = params.coverage_bands ?? [];
         for (const d of DAYS_KEYS) curve[d] = bands;
         solverParams.demand_curve = curve;
-        solverParams.billing = { ...params.billing, daily: Object.fromEntries(DAYS_KEYS.map(d => [d, 0])) };
+        solverParams.billing = { ...billingBase, daily: Object.fromEntries(DAYS_KEYS.map(d => [d, 0])) };
       }
 
       const payload = { department:{id:department.id,name:department.name}, params:solverParams, employees:solverEmps };
@@ -144,7 +148,7 @@ export default function GridView({ department, employees, allEmployees, weekOver
       showToast(`<b>${result.status}</b> · Objetivo ${result.objective}${result.warnings.length>0?` · ${result.warnings.length} avisos`:""}`);
     } catch(e) { showToast(`Error: ${e instanceof Error?e.message:"desconocido"}`); }
     finally { setLoading(false); }
-  }, [department,employees,params,mergedStoreHours,weekDocId,weekMonday,onSchedule,showToast,scheduleEdits,onScheduleEditsChange,storeBilling]);
+  }, [department,employees,params,mergedStoreHours,weekDocId,weekMonday,onSchedule,showToast,scheduleEdits,onScheduleEditsChange,storeBilling,storeProfiles]);
 
   useEffect(() => { generateRef.current=handleGenerate; return()=>{generateRef.current=null;}; }, [handleGenerate,generateRef]);
 
@@ -232,7 +236,7 @@ export default function GridView({ department, employees, allEmployees, weekOver
             <span className="sub">desde apertura − montaje</span>
           </div>
           {displaySchedule ? (
-            <div className="gwrap"><DayGrid day={DAYS_KEYS[dayIdx]} params={params} storeHours={mergedStoreHours} storeBilling={storeBilling} employees={employees} allEmployees={allEmployees} inactiveIds={inactiveIds} weekOverrides={weekOverrides} schedule={displaySchedule} scheduleEdits={scheduleEdits} color={color} onManualEdit={handleManualEdit} onSetOff={handleSetDayOff}/></div>
+            <div className="gwrap"><DayGrid day={DAYS_KEYS[dayIdx]} params={params} storeHours={mergedStoreHours} storeBilling={storeBilling} storeProfiles={storeProfiles} employees={employees} allEmployees={allEmployees} inactiveIds={inactiveIds} weekOverrides={weekOverrides} schedule={displaySchedule} scheduleEdits={scheduleEdits} color={color} onManualEdit={handleManualEdit} onSetOff={handleSetDayOff}/></div>
           ) : (
             <div className="cardpad" style={{textAlign:"center",color:"var(--ink-3)",padding:40}}>Pulsa <b>Generar</b> para calcular el cuadrante</div>
           )}
@@ -243,7 +247,7 @@ export default function GridView({ department, employees, allEmployees, weekOver
         {displaySchedule ? DAYS_KEYS.map(d=>(
           <div key={d} className="dayblock">
             <h5>{DAY_LABELS[d]} {events[d]?.letter&&<span className="dbtag match">Evento {events[d].letter}</span>}</h5>
-            <div className="gscroll"><DayGrid day={d} params={params} storeHours={mergedStoreHours} storeBilling={storeBilling} employees={employees} allEmployees={allEmployees} inactiveIds={inactiveIds} weekOverrides={weekOverrides} schedule={displaySchedule} scheduleEdits={scheduleEdits} color={color} onManualEdit={handleManualEdit} onSetOff={handleSetDayOff}/></div>
+            <div className="gscroll"><DayGrid day={d} params={params} storeHours={mergedStoreHours} storeBilling={storeBilling} storeProfiles={storeProfiles} employees={employees} allEmployees={allEmployees} inactiveIds={inactiveIds} weekOverrides={weekOverrides} schedule={displaySchedule} scheduleEdits={scheduleEdits} color={color} onManualEdit={handleManualEdit} onSetOff={handleSetDayOff}/></div>
           </div>
         )) : <div className="card cardpad" style={{textAlign:"center",color:"var(--ink-3)",padding:40}}>Pulsa <b>Generar</b></div>}
       </div>)}
@@ -376,13 +380,13 @@ function EventModal({event,day,onSave,onRemove,onClose,hasEvent}:{event:WeekEven
 
 /* ÚNICO cálculo del aconsejado por franja abierta, consciente de demand_mode y billing_pct.
    Se usa tanto al recalcular cobertura al editar como al pintar la fila ACONSEJADO. */
-function computeTargetMap(day:DayKey,params:Department["params"],sh:StoreHours,storeDaily:Record<string,number>):Record<string,number> {
+function computeTargetMap(day:DayKey,params:Department["params"],sh:StoreHours,storeDaily:Record<string,number>,storeProfiles:Record<string,BillingProfile>):Record<string,number> {
   const out:Record<string,number>={};
   const openM=tm(sh.open); const cr=tm(sh.close); const closeM=cr<=openM?cr+1440:cr;
   const mode=params.demand_mode??"billing";
   const billing=params.billing;
-  const pn=(sh.special && billing?.profiles?.[sh.special])?sh.special:"normal";
-  const prof=billing?.profiles?.[pn]??{};
+  const pn=(sh.special && storeProfiles[sh.special])?sh.special:"normal";
+  const prof=storeProfiles[pn]??{};
   if(mode==="cobertura"){
     const bands=params.coverage_bands??[];
     for(let m=openM;m<closeM;m+=30){
@@ -405,20 +409,20 @@ function computeTargetMap(day:DayKey,params:Department["params"],sh:StoreHours,s
 }
 
 /* Coverage recalc — assigned igual que antes; target via computeTargetMap (único cálculo). */
-function recalcCoverage(day:DayKey,sched:SolveResult,employees:Employee[],params:Department["params"],storeHours:Record<string,StoreHours>,storeDaily:Record<string,number>):CoverageSlot[] {
+function recalcCoverage(day:DayKey,sched:SolveResult,employees:Employee[],params:Department["params"],storeHours:Record<string,StoreHours>,storeDaily:Record<string,number>,storeProfiles:Record<string,BillingProfile>):CoverageSlot[] {
   const sh=storeHours[day]; if(!sh) return [];
   const openM=tm(sh.open); const cr=tm(sh.close); const closeM=cr<=openM?cr+1440:cr;
   const preM=openM-(params.preopen?.minutes??30); const postM=closeM+(params.postclose?.minutes??30);
   let endM=postM; if(sh.extra){const et=tm(sh.extra.to);endM=Math.max(endM,et<=openM?et+1440:et);}
   const t0=preM; const n=Math.ceil((endM-t0)/30); const cov=new Array(n).fill(0);
   for(const emp of employees){const e=sched.schedule?.[emp.id]?.[day];if(!e||e.code!=="normal"||!e.start)continue;const s=tm(e.start);const sl=(e.hours??0)*2;for(let i=0;i<sl;i++){const idx=Math.round((s+i*30-t0)/30);if(idx>=0&&idx<n)cov[idx]++;}}
-  const tmap=computeTargetMap(day,params,sh,storeDaily);
+  const tmap=computeTargetMap(day,params,sh,storeDaily,storeProfiles);
   return cov.map((a,k)=>{const m=t0+k*30;const open=m>=openM&&m<closeM;return{time:hh(m),target:open?(tmap[hh(m)]??0):0,assigned:a};});
 }
 
 /* DayGrid — with COMPL column, overrides indicators */
-function DayGrid({day,params,storeHours,storeBilling,employees,allEmployees,inactiveIds,weekOverrides,schedule,scheduleEdits,color,onManualEdit,onSetOff}:{
-  day:DayKey;params:Department["params"];storeHours:Record<string,StoreHours>;storeBilling:Record<string,number>;
+function DayGrid({day,params,storeHours,storeBilling,storeProfiles,employees,allEmployees,inactiveIds,weekOverrides,schedule,scheduleEdits,color,onManualEdit,onSetOff}:{
+  day:DayKey;params:Department["params"];storeHours:Record<string,StoreHours>;storeBilling:Record<string,number>;storeProfiles:Record<string,BillingProfile>;
   employees:Employee[];allEmployees:Employee[];inactiveIds:Set<string>;weekOverrides:Record<string,WeekOverride>;
   schedule:SolveResult;scheduleEdits:ScheduleEdits;color:string;
   onManualEdit:(empId:string,day:DayKey,start:string,hours:number)=>void;
@@ -434,7 +438,7 @@ function DayGrid({day,params,storeHours,storeBilling,employees,allEmployees,inac
   const covMap:Record<string,CoverageSlot>={};(schedule.coverage?.[day]??[]).forEach(c=>{covMap[c.time]=c;});
 
   // ACONSEJADO: ÚNICO cálculo (mismo que recalcCoverage), consciente del modo y del % del dpto.
-  const targetMap=computeTargetMap(day,params,sh,storeBilling);
+  const targetMap=computeTargetMap(day,params,sh,storeBilling,storeProfiles);
   const dragRef=useRef<{empId:string;mode:"move"|"start"|"end";origStart:number;origSlots:number;startX:number}|null>(null);
   const [dragPreview,setDragPreview]=useState<{empId:string;startSlot:number;slots:number}|null>(null);
   function onPD(e:React.PointerEvent,empId:string,ss:number,sl:number,ck:number){e.preventDefault();dragRef.current={empId,origStart:ss,origSlots:sl,mode:ck===ss?"start":ck===ss+sl-1?"end":"move",startX:e.clientX};setDragPreview({empId,startSlot:ss,slots:sl});(e.target as HTMLElement).setPointerCapture(e.pointerId);}
