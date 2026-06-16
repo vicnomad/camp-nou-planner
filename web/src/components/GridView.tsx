@@ -58,14 +58,17 @@ export default function GridView({ department, employees, allEmployees, weekOver
       delete m[d].extra;   // 'extra' (banda de inventario) retirada: ignora cualquier residuo en los datos
       // Participación: el depto solo entra en el evento si tiene curva definida para esa letra (algún valor > 0).
       const ev = events[d];
-      const eid = ev?.eventId;                                       // SOLO eventId (sin compat .letter)
-      const t = eid ? eventTypes.find(x => x.id === eid) : undefined; // el evento debe seguir en el catálogo
-      const lc = t ? storeProfiles[t.id] : undefined;
-      const affected = !!t && (params.demand_mode ?? "billing") !== "cobertura" && !!(lc && Object.values(lc).some(v => Number(v) > 0));
-      if (eid && affected) {
-        m[d].special = eid;
-        const closeVal = ev?.close;                                  // cierre SOLO por día
-        if (closeVal && closeVal !== "00:00") m[d].close = closeVal;  // ignora vacío/00:00
+      const eid = ev?.eventId;
+      const t = eid ? eventTypes.find(x => x.id === eid) : undefined; // el evento debe existir en el catálogo
+      if (eid && t) {
+        // Cierre ampliado = OVERRIDE DE HORARIO. Aplica SIEMPRE, en cualquier modo, haya o no curva.
+        const closeVal = ev?.close;
+        if (closeVal && closeVal !== "00:00") m[d].close = closeVal;
+        // 'special' solo elige la CURVA del evento (billing/cajas). Sin curva con valores → queda la normal,
+        // pero el cierre se aplica igual.
+        const lc = storeProfiles[t.id];
+        if (lc && Object.values(lc).some(v => Number(v) > 0)) m[d].special = eid;
+        else delete m[d].special;
       } else {
         delete m[d].special;
       }
@@ -85,7 +88,7 @@ export default function GridView({ department, employees, allEmployees, weekOver
     return { ...merged, coverage };
   }, [schedule, scheduleEdits, employees, params, mergedStoreHours, storeBilling, storeProfiles]);
 
-  async function saveEvents(ne: Record<string,WeekEvent>) { setEvents(ne); await setDoc(doc(db,"storeEvents",weekIsoId(weekMonday)),{events:ne},{merge:true}); }
+  async function saveEvents(ne: Record<string,WeekEvent>) { setEvents(ne); await setDoc(doc(db,"storeEvents",weekIsoId(weekMonday)),{events:ne}); }
   function addEvent(day:DayKey,ev:WeekEvent) { saveEvents({...events,[day]:ev}); setEventModal(null); showToast(`Evento añadido al ${DAY_LABELS[day]}`); }
   function removeEvent(day:DayKey) { const n={...events}; delete n[day]; saveEvents(n); setEventModal(null); }
 
