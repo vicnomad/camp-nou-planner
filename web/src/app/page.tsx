@@ -10,7 +10,7 @@ import type { Department, Employee, SolveResult, Absence } from "@/lib/types";
 import { DAYS_KEYS } from "@/lib/types";
 import { getMonday, fmtDate, weekIsoId, isoWeekNumber, weekLabel, shiftWeek } from "@/lib/week";
 import { exportCegidXlsx } from "@/lib/exportCegid";
-import { mergeSchedule, type ScheduleEdits } from "@/lib/schedule";
+import { mergeSchedule, applyAbsences, type ScheduleEdits } from "@/lib/schedule";
 import Sidebar from "@/components/Sidebar";
 import TeamView from "@/components/TeamView";
 import ParamsView from "@/components/ParamsView";
@@ -120,9 +120,6 @@ export default function Home() {
     });
   }, [weekDocId, authUser]);
 
-  // Horario EFECTIVO = generado + ediciones manuales. Única fuente para export/ficha/grid.
-  const effectiveSchedule = mergeSchedule(schedule, scheduleEdits);
-
   // Compute effective employees (base + week overrides).
   // Las ausencias son SIEMPRE por semana: se toman del override (o [] si no hay);
   // las ausencias globales del empleado se ignoran.
@@ -140,6 +137,10 @@ export default function Home() {
     const ov = weekOverrides[emp.id];
     return ov?.active !== false;
   });
+
+  // Horario EFECTIVO = generado + ediciones manuales + ausencias de la semana.
+  // Única fuente para export/ficha/grid. Tras effectiveEmployees (usa sus ausencias).
+  const effectiveSchedule = applyAbsences(mergeSchedule(schedule, scheduleEdits), effectiveEmployees);
 
   const updateParams = useCallback(async (params: Department["params"]) => {
     if (!currentDeptId) return;

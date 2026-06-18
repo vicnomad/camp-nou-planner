@@ -7,7 +7,7 @@ import type { Department, Employee, SolveResult, ScheduleEntry, CoverageSlot, Da
 import { DAYS_KEYS, DAY_LABELS, DAY_SHORT } from "@/lib/types";
 import { weekLabel, weekIsoId } from "@/lib/week";
 import { weekComplSplit } from "@/lib/weekCompl";
-import { mergeSchedule, editedDays, editedDaysOf, hasEdits, type ScheduleEdits } from "@/lib/schedule";
+import { mergeSchedule, editedDays, editedDaysOf, hasEdits, applyAbsences, absenceDays, type ScheduleEdits } from "@/lib/schedule";
 import { printA3 } from "@/lib/printA3";
 import type { WeekOverride } from "@/app/page";
 
@@ -63,13 +63,14 @@ export default function GridView({ department, employees, allEmployees, weekOver
   // Cobertura recalculada solo en los días editados (el resto la conserva del solver).
   const displaySchedule = useMemo(() => {
     const merged = mergeSchedule(schedule, scheduleEdits);
-    if (!merged) return null;
-    const days = editedDays(scheduleEdits);
-    if (days.size === 0) return merged;
-    const coverage = { ...merged.coverage };
-    for (const d of days) coverage[d] = recalcCoverage(d, merged, employees, params, mergedStoreHours, storeBilling);
-    return { ...merged, coverage };
-  }, [schedule, scheduleEdits, employees, params, mergedStoreHours, storeBilling]);
+    const withAbs = applyAbsences(merged, allEmployees);
+    if (!withAbs) return null;
+    const days = new Set<DayKey>([...editedDays(scheduleEdits), ...absenceDays(allEmployees)]);
+    if (days.size === 0) return withAbs;
+    const coverage = { ...withAbs.coverage };
+    for (const d of days) coverage[d] = recalcCoverage(d, withAbs, employees, params, mergedStoreHours, storeBilling);
+    return { ...withAbs, coverage };
+  }, [schedule, scheduleEdits, allEmployees, employees, params, mergedStoreHours, storeBilling]);
 
   async function saveEvents(ne: Record<string,WeekEvent>) { setEvents(ne); await setDoc(doc(db,"weeks",weekDocId),{events:ne},{merge:true}); }
   function addEvent(day:DayKey,ev:WeekEvent) { saveEvents({...events,[day]:ev}); setEventModal(null); showToast(`Evento añadido al ${DAY_LABELS[day]}`); }

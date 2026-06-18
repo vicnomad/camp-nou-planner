@@ -6,7 +6,8 @@
  * weekComplSplit, totales de cabecera, ficha del trabajador, export Cegid y
  * cuadrante A3. Nada debe leer el generado "crudo" ignorando las ediciones.
  */
-import type { SolveResult, ScheduleEntry, DayKey } from "./types";
+import type { SolveResult, ScheduleEntry, DayKey, Absence } from "./types";
+import { DAYS_KEYS } from "./types";
 
 /** empId → (día → entrada editada a mano). */
 export type ScheduleEdits = Record<string, Partial<Record<DayKey, ScheduleEntry>>>;
@@ -51,4 +52,39 @@ export function mergeSchedule(
     }
   }
   return { ...base, schedule };
+}
+
+type EmpAbsences = { id: string; absences?: Absence[] };
+
+/** Superpone las ausencias de la semana sobre el efectivo, solo en los días de cada
+ *  trabajador. La ausencia GANA sobre el turno generado y sobre la edición manual del
+ *  mismo día. Derivado (quitar la ausencia restaura la entrada). Idempotente. No re-resuelve. */
+export function applyAbsences(base: SolveResult | null, employees: EmpAbsences[]): SolveResult | null {
+  if (!base) return base;
+  let touched = false;
+  const schedule: SolveResult["schedule"] = {};
+  for (const [empId, days] of Object.entries(base.schedule ?? {})) schedule[empId] = { ...days };
+  for (const emp of employees) {
+    for (const a of emp.absences ?? []) {
+      if (!a?.type || !Array.isArray(a.days)) continue;
+      for (const d of a.days) {
+        if (!(DAYS_KEYS as readonly string[]).includes(d)) continue;
+        schedule[emp.id] = { ...(schedule[emp.id] ?? {}) };
+        schedule[emp.id][d] = { code: a.type };
+        touched = true;
+      }
+    }
+  }
+  return touched ? { ...base, schedule } : base;
+}
+
+/** Días (MON..SUN) con alguna ausencia en la semana → recalcular cobertura solo donde toca. */
+export function absenceDays(employees: EmpAbsences[]): Set<DayKey> {
+  const out = new Set<DayKey>();
+  for (const emp of employees)
+    for (const a of emp.absences ?? [])
+      if (Array.isArray(a.days))
+        for (const d of a.days)
+          if ((DAYS_KEYS as readonly string[]).includes(d)) out.add(d as DayKey);
+  return out;
 }
