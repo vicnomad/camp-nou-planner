@@ -61,7 +61,6 @@ export const DEFAULT_ABSENCE_TYPES: AbsenceType[] = [
   { code: "FRC", label: "Festivo recuperado", countsAsWorked: false },
   { code: "DEC", label: "Día de convenio", countsAsWorked: false },
   { code: "BJA", label: "Baja", countsAsWorked: false },
-  { code: "DLB", label: "Día libre", countsAsWorked: false },
 ];
 
 export interface Absence {

@@ -66,7 +66,7 @@ export function applyAbsences(base: SolveResult | null, employees: EmpAbsences[]
   for (const [empId, days] of Object.entries(base.schedule ?? {})) schedule[empId] = { ...days };
   for (const emp of employees) {
     for (const a of emp.absences ?? []) {
-      if (!a?.type || !Array.isArray(a.days)) continue;
+      if (!a?.type || a.type === "DLB" || !Array.isArray(a.days)) continue;
       for (const d of a.days) {
         if (!(DAYS_KEYS as readonly string[]).includes(d)) continue;
         schedule[emp.id] = { ...(schedule[emp.id] ?? {}) };
@@ -83,7 +83,7 @@ export function absenceDays(employees: EmpAbsences[]): Set<DayKey> {
   const out = new Set<DayKey>();
   for (const emp of employees)
     for (const a of emp.absences ?? [])
-      if (Array.isArray(a.days))
+      if (a.type !== "DLB" && Array.isArray(a.days))
         for (const d of a.days)
           if ((DAYS_KEYS as readonly string[]).includes(d)) out.add(d as DayKey);
   return out;
