@@ -36,6 +36,7 @@ export default function GridView({ department, employees, allEmployees, weekOver
   const [selectedEmp, setSelectedEmp] = useState<string>("");
   const [events, setEvents] = useState<Record<string, WeekEvent>>({});
   const [eventModal, setEventModal] = useState<{day:DayKey;event:WeekEvent}|null>(null);
+  const [compact, setCompact] = useState(false);
 
   const params = department.params;
   const color = department.color;
@@ -178,6 +179,21 @@ export default function GridView({ department, employees, allEmployees, weekOver
           <button className={`gt ${mode==="dia"?"active":""}`} onClick={()=>setMode("dia")}>Por día</button>
           <button className={`gt ${mode==="semana"?"active":""}`} onClick={()=>setMode("semana")}>Semana completa</button>
         </div>
+        {!selectedEmp && mode==="semana" && displaySchedule && (
+          <button
+            className="btn btn-ghost"
+            onClick={()=>setCompact(c=>!c)}
+            title={compact ? "Mostrar todos los empleados" : "Mostrar solo quien trabaja cada día"}
+            style={compact ? { background:"var(--garnet)", color:"#fff" } : undefined}
+          >
+            <svg className="ico" viewBox="0 0 24 24" style={{width:14,height:14}}>
+              {compact
+                ? (<><path d="M7 9l5-5 5 5"/><path d="M7 15l5 5 5-5"/></>)
+                : (<><path d="M7 4l5 5 5-5"/><path d="M7 20l5-5 5 5"/></>)}
+            </svg>
+            {compact ? "Ver todos" : "Compactar"}
+          </button>
+        )}
         {/* Worker selector — inline in toolbar */}
         <div style={{display:"flex",alignItems:"center",gap:6}}>
           <select className="sel" value={selectedEmp} onChange={e=>setSelectedEmp(e.target.value)} style={{minWidth:130,fontSize:12}}>
@@ -230,7 +246,7 @@ export default function GridView({ department, employees, allEmployees, weekOver
             <span className="sub">desde apertura − montaje</span>
           </div>
           {displaySchedule ? (
-            <div className="gwrap"><DayGrid day={DAYS_KEYS[dayIdx]} params={params} storeHours={mergedStoreHours} storeBilling={storeBilling} employees={employees} allEmployees={allEmployees} inactiveIds={inactiveIds} weekOverrides={weekOverrides} schedule={displaySchedule} scheduleEdits={scheduleEdits} color={color} onManualEdit={handleManualEdit} onSetOff={handleSetDayOff}/></div>
+            <div className="gwrap"><DayGrid day={DAYS_KEYS[dayIdx]} params={params} storeHours={mergedStoreHours} storeBilling={storeBilling} employees={employees} allEmployees={allEmployees} inactiveIds={inactiveIds} weekOverrides={weekOverrides} schedule={displaySchedule} scheduleEdits={scheduleEdits} color={color} compact={false} onManualEdit={handleManualEdit} onSetOff={handleSetDayOff}/></div>
           ) : (
             <div className="cardpad" style={{textAlign:"center",color:"var(--ink-3)",padding:40}}>Pulsa <b>Generar</b> para calcular el cuadrante</div>
           )}
@@ -241,7 +257,7 @@ export default function GridView({ department, employees, allEmployees, weekOver
         {displaySchedule ? DAYS_KEYS.map(d=>(
           <div key={d} className="dayblock">
             <h5>{DAY_LABELS[d]} {events[d]?.type==="match"&&<span className="dbtag match">Partido</span>}{events[d]?.type==="inventory"&&<span className="dbtag inv">Inventario</span>}</h5>
-            <div className="gscroll"><DayGrid day={d} params={params} storeHours={mergedStoreHours} storeBilling={storeBilling} employees={employees} allEmployees={allEmployees} inactiveIds={inactiveIds} weekOverrides={weekOverrides} schedule={displaySchedule} scheduleEdits={scheduleEdits} color={color} onManualEdit={handleManualEdit} onSetOff={handleSetDayOff}/></div>
+            <div className="gscroll"><DayGrid day={d} params={params} storeHours={mergedStoreHours} storeBilling={storeBilling} employees={employees} allEmployees={allEmployees} inactiveIds={inactiveIds} weekOverrides={weekOverrides} schedule={displaySchedule} scheduleEdits={scheduleEdits} color={color} compact={compact} onManualEdit={handleManualEdit} onSetOff={handleSetDayOff}/></div>
           </div>
         )) : <div className="card cardpad" style={{textAlign:"center",color:"var(--ink-3)",padding:40}}>Pulsa <b>Generar</b></div>}
       </div>)}
@@ -413,10 +429,10 @@ function recalcCoverage(day:DayKey,sched:SolveResult,employees:Employee[],params
 }
 
 /* DayGrid — with COMPL column, overrides indicators */
-function DayGrid({day,params,storeHours,storeBilling,employees,allEmployees,inactiveIds,weekOverrides,schedule,scheduleEdits,color,onManualEdit,onSetOff}:{
+function DayGrid({day,params,storeHours,storeBilling,employees,allEmployees,inactiveIds,weekOverrides,schedule,scheduleEdits,color,compact,onManualEdit,onSetOff}:{
   day:DayKey;params:Department["params"];storeHours:Record<string,StoreHours>;storeBilling:Record<string,number>;
   employees:Employee[];allEmployees:Employee[];inactiveIds:Set<string>;weekOverrides:Record<string,WeekOverride>;
-  schedule:SolveResult;scheduleEdits:ScheduleEdits;color:string;
+  schedule:SolveResult;scheduleEdits:ScheduleEdits;color:string;compact:boolean;
   onManualEdit:(empId:string,day:DayKey,start:string,hours:number)=>void;
   onSetOff:(empId:string,day:DayKey)=>void;
 }) {
@@ -448,7 +464,15 @@ function DayGrid({day,params,storeHours,storeBilling,employees,allEmployees,inac
   }
 
   // Show all employees (active + inactive grayed)
-  const showEmployees = allEmployees;
+  const showEmployees = compact
+    ? allEmployees.filter((emp) => {
+        const inactive = inactiveIds.has(emp.id);
+        const e = schedule.schedule?.[emp.id]?.[day];
+        const isOff = inactive || !e || e.code === "off";
+        const isVac = !inactive && !!e?.code && e.code !== "normal" && e.code !== "off";
+        return !isOff && !isVac; // solo quien trabaja ese día
+      })
+    : allEmployees;
 
   return (
     <div onPointerMove={onPM} onPointerUp={onPU}>
