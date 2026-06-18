@@ -44,6 +44,7 @@ export default function Home() {
   const [scheduleEdits, setScheduleEdits] = useState<ScheduleEdits>({});
   const [storeBilling, setStoreBilling] = useState<Record<string, number>>({});
   const generateRef = useRef<(() => void) | null>(null);
+  const wantedDeptRef = useRef<string | null>(null);
 
   // Puerta de acceso (Firebase Auth, sesión persistida).
   const [authUser, setAuthUser] = useState<User | null>(null);
@@ -61,6 +62,17 @@ export default function Home() {
     const saved = localStorage.getItem("sidebar_collapsed");
     if (saved === "true") setCollapsed(true);
   }, []);
+
+  // Restaurar (por dispositivo) el último cuadrante generado: depto + semana.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("last_generated");
+      if (!raw) return;
+      const saved = JSON.parse(raw) as { deptId?: string; weekMonday?: string };
+      if (typeof saved.weekMonday === "string") setWeekMonday(saved.weekMonday);
+      if (typeof saved.deptId === "string") wantedDeptRef.current = saved.deptId;
+    } catch {}
+  }, []);
   const toggleSidebar = useCallback(() => {
     setCollapsed((c) => { localStorage.setItem("sidebar_collapsed", String(!c)); return !c; });
   }, []);
@@ -72,7 +84,10 @@ export default function Home() {
       const depts = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Department[];
       depts.sort((a, b) => a.name.localeCompare(b.name));
       setDepartments(depts);
-      if (!currentDeptId && depts.length > 0) setCurrentDeptId(depts[0].id);
+      if (!currentDeptId && depts.length > 0) {
+        const w = wantedDeptRef.current;
+        setCurrentDeptId(w && depts.some((d) => d.id === w) ? w : depts[0].id);
+      }
     });
     return unsub;
   }, [currentDeptId, authUser]);

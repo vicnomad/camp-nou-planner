@@ -136,6 +136,8 @@ export default function GridView({ department, employees, allEmployees, weekOver
       onScheduleEditsChange({});
       await deleteDoc(doc(db,"scheduleEdits",weekDocId));
       await setDoc(doc(db,"schedules",weekDocId),{ weekStart:weekMonday, weekIso:weekIsoId(weekMonday), department:department.id, ...result });
+      // Recordar (por dispositivo) el último cuadrante generado para reabrir aquí.
+      try { localStorage.setItem("last_generated", JSON.stringify({ deptId: department.id, weekMonday })); } catch {}
       showToast(`<b>${result.status}</b> · Objetivo ${result.objective}${result.warnings.length>0?` · ${result.warnings.length} avisos`:""}`);
     } catch(e) { showToast(`Error: ${e instanceof Error?e.message:"desconocido"}`); }
     finally { setLoading(false); }
