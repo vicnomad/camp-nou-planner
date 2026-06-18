@@ -8,7 +8,7 @@ import {
 } from "firebase/firestore";
 import type { Department, Employee, SolveResult, Absence } from "@/lib/types";
 import { DAYS_KEYS } from "@/lib/types";
-import { getMonday, fmtDate, weekIsoId, isoWeekNumber, weekLabel, shiftWeek } from "@/lib/week";
+import { getMonday, fmtDate, weekIsoId, fiscalWeekNumber, weekLabel, shiftWeek } from "@/lib/week";
 import { exportCegidXlsx } from "@/lib/exportCegid";
 import { mergeSchedule, applyAbsences, type ScheduleEdits } from "@/lib/schedule";
 import Sidebar from "@/components/Sidebar";
@@ -204,7 +204,7 @@ export default function Home() {
           )}
           {view === "grid" && schedule && weekDocId && (
             <button className="btn btn-ghost" style={{ color: "var(--bad)" }} onClick={async () => {
-              if (!confirm(`¿Reiniciar el cuadrante de ${currentDept?.name} · Semana ${isoWeekNumber(weekMonday)}?\nSe borrará lo generado y los ajustes manuales.`)) return;
+              if (!confirm(`¿Reiniciar el cuadrante de ${currentDept?.name} · Semana ${fiscalWeekNumber(weekMonday)}?\nSe borrará lo generado y los ajustes manuales.`)) return;
               await deleteDoc(doc(db, "schedules", weekDocId));
               await deleteDoc(doc(db, "scheduleEdits", weekDocId));
               setSchedule(null);

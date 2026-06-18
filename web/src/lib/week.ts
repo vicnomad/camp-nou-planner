@@ -18,6 +18,24 @@ export function isoWeek(d: Date): number {
   return Math.ceil((((dt.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
 }
 
+function fiscalYearStartMonday(year: number): Date {
+  return getMonday(new Date(year, 6, 1)); // 6 = julio
+}
+function dayIndexUTC(d: Date): number {
+  return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000);
+}
+/** Semana FISCAL (1-based): ejercicio empieza el lunes de la semana que contiene el 1-jul.
+ *  SOLO display; weekIsoId sigue siendo ISO. */
+export function fiscalWeek(d: Date): number {
+  const y = d.getFullYear();
+  let start = fiscalYearStartMonday(y);
+  if (dayIndexUTC(d) < dayIndexUTC(start)) start = fiscalYearStartMonday(y - 1);
+  return Math.round((dayIndexUTC(d) - dayIndexUTC(start)) / 7) + 1;
+}
+export function fiscalWeekNumber(mondayStr: string): number {
+  return fiscalWeek(new Date(mondayStr + "T00:00:00"));
+}
+
 export function weekIsoId(mondayStr: string): string {
   const d = new Date(mondayStr + "T00:00:00");
   const wn = isoWeek(d);
@@ -26,7 +44,7 @@ export function weekIsoId(mondayStr: string): string {
 
 export function weekLabel(mondayStr: string): string {
   const monday = new Date(mondayStr + "T00:00:00");
-  const wn = isoWeek(monday);
+  const wn = fiscalWeek(monday);
   const sunday = new Date(monday);
   sunday.setDate(sunday.getDate() + 6);
   const months = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];

@@ -5,7 +5,7 @@ import { db } from "@/lib/firebase";
 import { doc, setDoc, deleteDoc } from "firebase/firestore";
 import type { Department, Employee, Absence } from "@/lib/types";
 import { DAYS_KEYS, DAY_SHORT, DEFAULT_ABSENCE_TYPES } from "@/lib/types";
-import { weekIsoId, isoWeekNumber } from "@/lib/week";
+import { weekIsoId, fiscalWeekNumber } from "@/lib/week";
 import type { WeekOverride } from "@/app/page";
 
 interface Props {
@@ -50,7 +50,7 @@ export default function TeamView({
   weekMonday, weekOverrides, onOverridesChange,
 }: Props) {
   const weekDocId = `${department.id}_${weekIsoId(weekMonday)}`;
-  const weekNum = isoWeekNumber(weekMonday);
+  const weekNum = fiscalWeekNumber(weekMonday);
 
   async function saveOverride(empId: string, ov: WeekOverride | null) {
     const next = { ...weekOverrides };

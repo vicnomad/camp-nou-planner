@@ -4,7 +4,7 @@
  */
 import type { Employee, SolveResult, DayKey } from "./types";
 import { DAYS_KEYS } from "./types";
-import { isoWeekNumber } from "./week";
+import { fiscalWeekNumber } from "./week";
 import { weekComplSplit } from "./weekCompl";
 import { editedDaysOf, type ScheduleEdits } from "./schedule";
 
@@ -144,7 +144,7 @@ export async function exportCegidXlsx(
   }
 
   // Generate and save
-  const wn = isoWeekNumber(weekMonday);
+  const wn = fiscalWeekNumber(weekMonday);
   const yr = new Date(weekMonday + "T00:00:00").getFullYear();
   const fileName = `Cegid_${deptName.replace(/[^a-zA-Z0-9]/g, "_")}_Sem${wn}_${yr}.xlsx`;
 
