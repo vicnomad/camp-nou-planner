@@ -21,12 +21,6 @@ function fmtHM(hours: number): string {
   return `${h}:${String(m).padStart(2, "0")}`;
 }
 
-function dateStr(mondayStr: string, dayIdx: number): string {
-  const d = new Date(mondayStr + "T00:00:00");
-  d.setDate(d.getDate() + dayIdx);
-  return `${d.getDate()}/${d.getMonth() + 1}/${String(d.getFullYear()).slice(2)}`;
-}
-
 export async function exportCegidXlsx(
   deptName: string,
   employees: Employee[],
@@ -39,8 +33,8 @@ export async function exportCegidXlsx(
   const { saveAs } = await import("file-saver");
 
   const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet("Cuadrante", {
-    views: [{ state: "frozen", xSplit: 2, ySplit: 1 }],
+  const ws = wb.addWorksheet("Sheet1", {
+    views: [{ state: "frozen", xSplit: 2, ySplit: 2 }],
   });
 
   const arialFont = { name: "Arial", size: 9 };
@@ -51,13 +45,16 @@ export async function exportCegidXlsx(
   for (let i = 0; i < 7; i++) colWidths.push(6, 8, 8, 11, 11);
   colWidths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
 
-  // Row 1: dates in the DIA column of each day block
-  const row1 = ws.getRow(1);
-  row1.height = 14;
+  // Fila 1 vacía (VT). Fila 2: fechas REALES (valor fecha) en la columna DIA de cada día.
+  const dateRow = ws.getRow(2);
+  dateRow.height = 14;
   for (let di = 0; di < 7; di++) {
-    const col = 3 + di * 5; // DIA column for this day
-    const cell = row1.getCell(col);
-    cell.value = dateStr(weekMonday, di);
+    const col = 3 + di * 5;
+    const d = new Date(weekMonday + "T00:00:00");
+    d.setDate(d.getDate() + di);
+    const cell = dateRow.getCell(col);
+    cell.value = d;
+    cell.numFmt = "mm-dd-yy";
     cell.font = { ...arialSmall, bold: true, color: { argb: "FF5A657C" } };
     cell.alignment = { horizontal: "center" };
   }
@@ -66,7 +63,7 @@ export async function exportCegidXlsx(
   const sorted = [...employees].sort((a, b) => a.name.localeCompare(b.name));
 
   sorted.forEach((emp, ri) => {
-    const row = ws.getRow(ri + 2);
+    const row = ws.getRow(ri + 3);
     row.height = 13;
     const hpd = emp.weekly_hours / dpw;
     // Weekly split: normales = min(Σ_semana, contrato); el exceso recae en los días editados a mano.
@@ -100,19 +97,19 @@ export async function exportCegidXlsx(
       if (!entry || entry.code === "off") {
         // Day off
         cDia.value = "DLB";
-        cEnt.value = "0:00"; cEnt2.value = "0:00";
-        cOrd.value = "0:00"; cComp.value = "0:00";
+        cEnt.value = "0:00"; cEnt2.value = "";
+        cOrd.value = "0:00"; cComp.value = "";
         cDia.fill = { type: "pattern", pattern: "solid", fgColor: { argb: CODE_COLORS.DLB } };
       } else if (entry.code === "normal" && entry.start) {
         // Working — weekly split for this day
         const { hours, norm: normH, compl: complH } = split.days[d];
         const hasCompl = complH > 0.01;
 
-        cDia.value = hasCompl ? "IP2" : `${fmtHM(hours)}`;
+        cDia.value = hasCompl ? "IP2" : `${hours}h`;
         cEnt.value = entry.start;
         cEnt2.value = entry.start;
         cOrd.value = fmtHM(normH);
-        cComp.value = fmtHM(complH);
+        cComp.value = complH > 0.01 ? fmtHM(complH) : "";
 
         if (hasCompl) {
           cDia.fill = { type: "pattern", pattern: "solid", fgColor: { argb: CODE_COLORS.IP2 } };
@@ -125,8 +122,8 @@ export async function exportCegidXlsx(
         // Absence (VCN, BJA, etc.)
         const code = entry.code.toUpperCase();
         cDia.value = code;
-        cEnt.value = "0:00"; cEnt2.value = "0:00";
-        cOrd.value = "0:00"; cComp.value = "0:00";
+        cEnt.value = "0:00"; cEnt2.value = "";
+        cOrd.value = "0:00"; cComp.value = "";
         cDia.fill = { type: "pattern", pattern: "solid", fgColor: { argb: CODE_COLORS[code] ?? DEFAULT_CODE_BG } };
         cDia.font = { ...arialSmall, bold: true };
       }
@@ -135,9 +132,9 @@ export async function exportCegidXlsx(
 
   // Thin borders on all used cells
   const thin = { style: "thin" as const, color: { argb: "FFE0E0E0" } };
-  const lastRow = sorted.length + 1;
+  const lastRow = sorted.length + 2;
   const lastCol = 2 + 7 * 5;
-  for (let r = 1; r <= lastRow; r++) {
+  for (let r = 2; r <= lastRow; r++) {
     for (let c2 = 1; c2 <= lastCol; c2++) {
       ws.getRow(r).getCell(c2).border = { top: thin, bottom: thin, left: thin, right: thin };
     }
