@@ -177,7 +177,7 @@ html,body{font-family:'Helvetica Neue',Arial,sans-serif;color:#16202e;font-size:
 .erow,.rulrow,.prow{display:flex;align-items:stretch;height:3.2mm;border-top:0.15mm solid #eef0f3}
 .rulrow{height:3mm;border-top:0}
 .prow{height:3mm;border-top:0.3mm solid #c9ced6}
-.ename{flex:0 0 22mm;width:22mm;font-size:5.6pt;line-height:3.2mm;padding-left:1mm;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:0.2mm solid #d7dbe1}
+.ename{flex:0 0 30mm;width:30mm;font-size:5pt;line-height:3.2mm;padding-left:1mm;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:0.2mm solid #d7dbe1}
 .prow .ename{color:#aab2bd;font-style:italic;font-size:5.4pt;text-align:right;padding-right:1mm}
 .trk{position:relative;flex:1;overflow:hidden}
 .trk.rul{border-bottom:0.3mm solid #c9ced6}
@@ -190,13 +190,13 @@ html,body{font-family:'Helvetica Neue',Arial,sans-serif;color:#16202e;font-size:
 .blab.end{transform:translateX(-100%);padding-left:0;padding-right:0.4mm}
 .pcell{position:absolute;top:0;bottom:0;text-align:center;font-size:5.4pt;font-weight:700;color:#6b7686;line-height:3mm}
 .pcell.hot{color:#16202e;font-weight:700}
-.wsum{break-inside:avoid;page-break-inside:avoid;margin-top:2.5mm;border:0.18mm solid #dde0e6;border-radius:1mm;overflow:hidden}
-.wtbl{width:100%;border-collapse:collapse;font-size:6pt;table-layout:fixed}
+.wsum{break-inside:avoid;page-break-inside:avoid;border:0.18mm solid #dde0e6;border-radius:1mm;overflow:hidden}
+.wtbl{width:100%;border-collapse:collapse;font-size:5.6pt;table-layout:fixed}
 .wtbl thead td{font-size:5.2pt;font-weight:700;color:#8a93a0;text-transform:uppercase;letter-spacing:.04em;padding:0.7mm 1mm;border-bottom:0.3mm solid #c9ced6;background:#fafbfc;text-align:center}
 .wtbl td{padding:0.6mm 1mm;border-bottom:0.15mm solid #eef0f3;text-align:center}
 .wtbl td.mono{font-family:'Courier New',monospace}
-.wtbl td.wname{text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
-.wtbl td.wd{width:8%}
+.wtbl td.wname{width:34%;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.wtbl td.wd{width:6%}
 .wtbl td.wc.work{background:#e7f5ef;color:#0f6e56;font-weight:700}
 .wtbl td.wc.abs{background:#f0f0f0;color:#5a657c;font-weight:700}
 .wtbl td.wc.off{color:#aab2bd}
@@ -213,8 +213,7 @@ html,body{font-family:'Helvetica Neue',Arial,sans-serif;color:#16202e;font-size:
 <div class="head"><div class="t">CUADRANTE · <b>${esc(dept.name)}</b></div><div class="w">${esc(weekLbl)} · Camp Nou Planner</div></div>
 <div class="accent"></div>
 <div class="key"><span><i style="background:${c}"></i>ordinaria</span><span><i style="background:${AMBER}"></i>complementaria</span></div>
-<div class="grid">${cells}</div>
-${summarySection()}
+<div class="grid">${cells}${summarySection()}</div>
 <div class="foot"><b>Camp Nou Planner</b></div>
 </body></html>`;
 
