@@ -48,10 +48,10 @@ export async function exportCegidXlsx(
   // Fila 1 vacía (VT). Fila 2: fechas REALES (valor fecha) en la columna DIA de cada día.
   const dateRow = ws.getRow(2);
   dateRow.height = 14;
+  const [wmY, wmM, wmD] = weekMonday.split("-").map(Number);
   for (let di = 0; di < 7; di++) {
     const col = 3 + di * 5;
-    const d = new Date(weekMonday + "T00:00:00");
-    d.setDate(d.getDate() + di);
+    const d = new Date(Date.UTC(wmY, wmM - 1, wmD + di, 0, 0, 0));
     const cell = dateRow.getCell(col);
     cell.value = d;
     cell.numFmt = "mm-dd-yy";
