@@ -197,7 +197,7 @@ body{font-family:'Hanken Grotesk',sans-serif;background:var(--canvas);color:var(
 .bd{background:var(--canvas);border:1px solid var(--line);border-radius:10px;padding:8px 6px;text-align:center}
 .bd label{font-size:10px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em}
 .bd .eur{display:flex;align-items:center;justify-content:center;gap:1px;margin-top:4px}
-.bd .eur input{border:none;background:transparent;font-family:'Spline Sans Mono';font-size:13px;font-weight:600;width:46px;text-align:center;color:var(--ink);outline:none}
+.bd .eur input{border:none;background:transparent;font-family:'Spline Sans Mono';font-size:13px;font-weight:600;width:84px;text-align:center;color:var(--ink);outline:none}
 .bd .eur span{font-family:'Spline Sans Mono';font-size:11px;color:var(--ink-3)}
 .bd.match{border-color:var(--gold-deep);background:#fdf6e3}
 .bd.match label{color:var(--gold-deep)}
